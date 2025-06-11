@@ -1,10 +1,25 @@
-# MCP Screenshot Website Fast
+# @just-every/mcp-screenshot-website-fast
 
 Fast, efficient screenshot capture tool for web pages - optimized for Claude Vision API. Automatically tiles full pages into 1072x1072 chunks for optimal AI processing.
 
-## MCP Server Configuration
+[![npm version](https://badge.fury.io/js/@just-every%2Fmcp-screenshot-website-fast.svg)](https://www.npmjs.com/package/@just-every/mcp-screenshot-website-fast)
+[![GitHub Actions](https://github.com/just-every/mcp-screenshot-website-fast/workflows/Release/badge.svg)](https://github.com/just-every/mcp-screenshot-website-fast/actions)
 
-This tool can be used as an MCP (Model Context Protocol) server with Claude Desktop, Cursor, VS Code, and other compatible clients.
+## Overview
+
+Built specifically for AI vision workflows, this tool captures high-quality screenshots with automatic resolution limiting and tiling for optimal processing by Claude Vision API and other AI models. It ensures screenshots are perfectly sized at 1072x1072 pixels (1.15 megapixels) for maximum compatibility.
+
+## Features
+
+- 📸 **Fast screenshot capture** using Puppeteer headless browser
+- 🎯 **Claude Vision optimized** with automatic resolution limiting (1072x1072 for optimal 1.15 megapixels)
+- 🔲 **Automatic tiling** - Full pages are automatically split into 1072x1072 tiles
+- 🔄 **Always fresh content** - No caching ensures up-to-date screenshots
+- 📱 **Configurable viewports** for responsive testing
+- ⏱️ **Wait strategies** for dynamic content (networkidle, custom delays)
+- 📄 **Full page capture** by default for complete page screenshots
+- 📦 **Minimal dependencies** for fast npm installs
+- 🔌 **MCP integration** for seamless AI workflows
 
 ## Installation
 
@@ -51,19 +66,19 @@ Choose "As JSON" and paste:
 
 Drop this into your client's mcp.json (e.g. .vscode/mcp.json, ~/.cursor/mcp.json, or .mcp.json for Claude).
 
-## Features
+## Prerequisites
 
-- **Fast screenshot capture** using Puppeteer headless browser
-- **Claude Vision optimized** with automatic resolution limiting (1072x1072 for optimal 1.15 megapixels)
-- **Automatic tiling** - Full pages are automatically split into 1072x1072 tiles
-- **Always fresh content** - No caching ensures up-to-date screenshots
-- **Configurable viewports** for responsive testing
-- **Wait strategies** for dynamic content (networkidle, custom delays)
-- **Full page capture** by default for complete page screenshots
-- **Minimal dependencies** for fast npm installs
-- **MCP integration** for seamless AI workflows
+- Node.js 20.x or higher
+- npm or npx
+- Chrome/Chromium (automatically downloaded by Puppeteer)
 
-### Available Tools
+## Quick Start
+
+### MCP Server Usage
+
+Once installed in your IDE, the following tools are available:
+
+#### Available Tools
 
 - `screenshot_website_fast` - Captures a high-quality screenshot of a webpage
   - Parameters:
@@ -143,6 +158,32 @@ Built specifically for AI vision workflows:
 3. **Always fresh** - No caching ensures you get the latest content
 4. **MCP native** - First-class integration with AI development tools
 5. **Simple API** - Clean, straightforward interface for capturing screenshots
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Submit a pull request
+
+## Troubleshooting
+
+### Puppeteer Issues
+- Ensure Chrome/Chromium can be downloaded
+- Check firewall settings
+- Try setting `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true` and provide custom executable
+
+### Screenshot Quality
+- Adjust viewport dimensions
+- Use appropriate wait strategies
+- Check if site requires authentication
+
+### Timeout Errors
+- Increase wait time with `--wait-for` flag
+- Use different `--wait-until` strategies
+- Check if site is accessible
 
 ## License
 
