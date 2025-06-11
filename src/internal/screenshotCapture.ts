@@ -5,7 +5,7 @@ import { logger } from '../utils/logger.js';
 let browser: Browser | null = null;
 
 async function getBrowser(): Promise<Browser> {
-  if (!browser) {
+  if (!browser || !browser.isConnected()) {
     browser = await puppeteer.launch({
       headless: true,
       args: [
@@ -22,12 +22,18 @@ async function getBrowser(): Promise<Browser> {
         '--disable-renderer-backgrounding'
       ]
     });
+    
+    // Handle browser disconnection
+    browser.on('disconnected', () => {
+      logger.info('Browser disconnected');
+      browser = null;
+    });
   }
   return browser;
 }
 
 export async function closeBrowser(): Promise<void> {
-  if (browser) {
+  if (browser && browser.isConnected()) {
     await browser.close();
     browser = null;
   }
@@ -80,8 +86,16 @@ export async function captureScreenshot(options: ScreenshotOptions): Promise<Scr
     };
     
     return result;
+  } catch (error) {
+    logger.error('Error taking screenshot:', error);
+    throw error;
   } finally {
-    await page.close();
+    try {
+      await page.close();
+    } catch (error) {
+      // Page might already be closed
+      logger.debug('Error closing page:', error);
+    }
   }
 }
 
@@ -94,6 +108,23 @@ process.on('SIGINT', async () => {
 process.on('SIGTERM', async () => {
   await closeBrowser();
   process.exit(0);
+});
+
+process.on('exit', async () => {
+  await closeBrowser();
+});
+
+// Handle uncaught errors
+process.on('uncaughtException', async (error) => {
+  logger.error('Uncaught exception:', error);
+  await closeBrowser();
+  process.exit(1);
+});
+
+process.on('unhandledRejection', async (error) => {
+  logger.error('Unhandled rejection:', error);
+  await closeBrowser();
+  process.exit(1);
 });
 
 async function captureTiledScreenshot(options: ScreenshotOptions): Promise<TiledScreenshotResult> {
@@ -192,7 +223,15 @@ async function captureTiledScreenshot(options: ScreenshotOptions): Promise<Tiled
     };
     
     return result;
+  } catch (error) {
+    logger.error('Error taking tiled screenshot:', error);
+    throw error;
   } finally {
-    await page.close();
+    try {
+      await page.close();
+    } catch (error) {
+      // Page might already be closed
+      logger.debug('Error closing page:', error);
+    }
   }
 }

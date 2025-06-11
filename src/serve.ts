@@ -154,6 +154,17 @@ async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("screenshot-website-fast MCP server running");
+  
+  // Handle graceful shutdown
+  const cleanup = async () => {
+    if (screenshotModule) {
+      await screenshotModule.closeBrowser();
+    }
+    process.exit(0);
+  };
+  
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
 }
 
 runServer().catch((error) => {
