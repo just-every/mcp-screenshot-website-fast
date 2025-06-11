@@ -191,20 +191,11 @@ async function navigateWithRetry(page: Page, url: string, options: ScreenshotOpt
       });
       
       // Race between navigation and frame detachment
-      // Special handling for problematic sites
-      const navigationOptions = {
-        waitUntil: options.waitUntil || 'networkidle2',
-        timeout: 60000
-      };
-      
-      // For problematic sites, use more lenient wait strategy
-      if (url.includes('justevery.com')) {
-        navigationOptions.waitUntil = 'domcontentloaded' as any;
-        logger.info('Using domcontentloaded for problematic site');
-      }
-      
       await Promise.race([
-        currentPage.goto(url, navigationOptions),
+        currentPage.goto(url, {
+          waitUntil: options.waitUntil || 'domcontentloaded',
+          timeout: 60000
+        }),
         frameDetachedPromise
       ]);
       

@@ -28,7 +28,7 @@ program
   .option('-w, --width <pixels>', 'Viewport width (max 1072)', '1072')
   .option('-h, --height <pixels>', 'Viewport height (max 1072)', '1072')
   .option('--no-full-page', 'Disable full page capture and tiling')
-  .option('--wait-until <event>', 'Wait until event: load, domcontentloaded, networkidle0, networkidle2', 'networkidle2')
+  .option('--wait-until <event>', 'Wait until event: load, domcontentloaded, networkidle0, networkidle2', 'domcontentloaded')
   .option('--wait-for <ms>', 'Additional wait time in milliseconds')
   .option('-o, --output <path>', 'Output file path (required for tiled output)')
   .action(async (url: string, options) => {

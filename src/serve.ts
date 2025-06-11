@@ -55,7 +55,7 @@ const SCREENSHOT_TOOL: Tool = {
       waitUntil: {
         type: "string",
         description: "Wait until event: load, domcontentloaded, networkidle0, networkidle2",
-        default: "networkidle2",
+        default: "domcontentloaded",
       },
       waitFor: {
         type: "number",
@@ -96,7 +96,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         height: Math.min(args.height ?? 1072, 1072),
       },
       fullPage: args.fullPage ?? true,
-      waitUntil: args.waitUntil ?? "networkidle2",
+      waitUntil: args.waitUntil ?? "domcontentloaded",
       waitFor: args.waitFor,
     });
 
