@@ -118,9 +118,9 @@ function stopHealthCheck() {
 async function setupPage(browser: Browser): Promise<Page> {
   const page = await browser.newPage();
   
-  // Configure page settings
-  await page.setDefaultNavigationTimeout(30000);
-  await page.setDefaultTimeout(30000);
+  // Configure page settings with longer timeout for problematic sites
+  await page.setDefaultNavigationTimeout(60000);
+  await page.setDefaultTimeout(60000);
   
   // Disable unnecessary features that might cause issues
   await page.setJavaScriptEnabled(true);
@@ -191,11 +191,20 @@ async function navigateWithRetry(page: Page, url: string, options: ScreenshotOpt
       });
       
       // Race between navigation and frame detachment
+      // Special handling for problematic sites
+      const navigationOptions = {
+        waitUntil: options.waitUntil || 'networkidle2',
+        timeout: 60000
+      };
+      
+      // For problematic sites, use more lenient wait strategy
+      if (url.includes('justevery.com')) {
+        navigationOptions.waitUntil = 'domcontentloaded' as any;
+        logger.info('Using domcontentloaded for problematic site');
+      }
+      
       await Promise.race([
-        currentPage.goto(url, {
-          waitUntil: options.waitUntil || 'networkidle2',
-          timeout: 30000
-        }),
+        currentPage.goto(url, navigationOptions),
         frameDetachedPromise
       ]);
       

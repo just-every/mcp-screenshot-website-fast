@@ -76,27 +76,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 // Handle tool execution
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name !== "screenshot_website_fast") {
-    throw new Error(`Unknown tool: ${request.params.name}`);
-  }
+  try {
+    if (request.params.name !== "screenshot_website_fast") {
+      throw new Error(`Unknown tool: ${request.params.name}`);
+    }
 
-  // Lazy load the module on first use
-  if (!screenshotModule) {
-    screenshotModule = await import("./internal/screenshotCapture.js");
-  }
+    // Lazy load the module on first use
+    if (!screenshotModule) {
+      screenshotModule = await import("./internal/screenshotCapture.js");
+    }
 
-  const args = request.params.arguments as any;
-  
-  const result = await screenshotModule.captureScreenshot({
-    url: args.url,
-    viewport: {
-      width: Math.min(args.width ?? 1072, 1072),
-      height: Math.min(args.height ?? 1072, 1072),
-    },
-    fullPage: args.fullPage ?? true,
-    waitUntil: args.waitUntil ?? "networkidle2",
-    waitFor: args.waitFor,
-  });
+    const args = request.params.arguments as any;
+    console.error(`[MCP] Received screenshot request for URL: ${args.url}`);
+    
+    const result = await screenshotModule.captureScreenshot({
+      url: args.url,
+      viewport: {
+        width: Math.min(args.width ?? 1072, 1072),
+        height: Math.min(args.height ?? 1072, 1072),
+      },
+      fullPage: args.fullPage ?? true,
+      waitUntil: args.waitUntil ?? "networkidle2",
+      waitFor: args.waitFor,
+    });
 
   if ('tiles' in result) {
     // Handle tiled screenshot result
@@ -136,6 +138,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         },
       ],
     };
+  }
+  } catch (error: any) {
+    console.error(`[MCP] Error capturing screenshot:`, error);
+    throw error;
   }
 });
 
