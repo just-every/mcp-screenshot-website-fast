@@ -36,7 +36,7 @@ async function measureStartupTime(command, args, name) {
 }
 
 async function runBenchmarks() {
-  console.log('📊 MCP Read Website Fast - Performance Benchmarks\n');
+  console.log('📊 MCP Screenshot Website Fast - Performance Benchmarks\n');
   
   const results = [];
   

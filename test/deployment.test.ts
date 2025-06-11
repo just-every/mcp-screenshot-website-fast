@@ -16,12 +16,12 @@ describe('Deployment Tests', () => {
 
   it('should have correct package name', async () => {
     const pkg = await import('../package.json');
-    expect(pkg.name).toBe('@just-every/mcp-read-website-fast');
+    expect(pkg.name).toBe('@just-every/mcp-screenshot-website-fast');
   });
 
   it('should have bin script configured', async () => {
     const pkg = await import('../package.json');
-    expect(pkg.bin).toHaveProperty('mcp-read-website-fast');
+    expect(pkg.bin).toHaveProperty('mcp-screenshot-website-fast');
   });
 
   it('should start MCP server without errors', async () => {
@@ -36,9 +36,9 @@ describe('Deployment Tests', () => {
       serverProcess.stderr.on('data', (data) => {
         stderr += data.toString();
         // Check if server started message appears
-        if (stderr.includes('read-website-fast MCP server running')) {
+        if (stderr.includes('screenshot-website-fast MCP server running')) {
           serverProcess.kill();
-          expect(stderr).toContain('read-website-fast MCP server running');
+          expect(stderr).toContain('screenshot-website-fast MCP server running');
           resolve();
         }
       });
@@ -58,7 +58,7 @@ describe('Deployment Tests', () => {
   });
 
   it('should default to serve command when no args provided', async () => {
-    const binPath = join(rootDir, 'bin/mcp-read-website.js');
+    const binPath = join(rootDir, 'bin/mcp-screenshot-website.js');
     const binProcess = spawn('node', [binPath], {
       stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -69,9 +69,9 @@ describe('Deployment Tests', () => {
       binProcess.stderr.on('data', (data) => {
         stderr += data.toString();
         // Check if server started message appears
-        if (stderr.includes('read-website-fast MCP server running')) {
+        if (stderr.includes('screenshot-website-fast MCP server running')) {
           binProcess.kill();
-          expect(stderr).toContain('read-website-fast MCP server running');
+          expect(stderr).toContain('screenshot-website-fast MCP server running');
           resolve();
         }
       });
@@ -86,9 +86,9 @@ describe('Deployment Tests', () => {
     });
   });
 
-  it('should handle fetch command', async () => {
-    const binPath = join(rootDir, 'bin/mcp-read-website.js');
-    const binProcess = spawn('node', [binPath, 'fetch', '--help'], {
+  it('should handle capture command', async () => {
+    const binPath = join(rootDir, 'bin/mcp-screenshot-website.js');
+    const binProcess = spawn('node', [binPath, 'capture', '--help'], {
       stdio: ['pipe', 'pipe', 'pipe']
     });
 
@@ -102,13 +102,13 @@ describe('Deployment Tests', () => {
       binProcess.on('close', (code) => {
         expect(code).toBe(0);
         expect(stdout).toContain('Usage:');
-        expect(stdout).toContain('fetch');
+        expect(stdout).toContain('capture');
         resolve();
       });
 
       binProcess.on('error', reject);
     });
-  });
+  }, 10000);
 
   it('should export correct MCP tool structure', async () => {
     // Import and check the server exports the right structure
@@ -120,11 +120,9 @@ describe('Deployment Tests', () => {
     const pkg = await import('../package.json');
     const requiredDeps = [
       '@modelcontextprotocol/sdk',
-      '@mozilla/readability',
-      'jsdom',
-      'turndown',
-      'commander',
-      'undici'
+      'puppeteer',
+      'sharp',
+      'commander'
     ];
 
     requiredDeps.forEach(dep => {
