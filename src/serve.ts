@@ -115,7 +115,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Add summary text
     content.push({
       type: "text",
-      text: `Captured ${tiledResult.tiles.length} tiles of ${tiledResult.tileSize}x${tiledResult.tileSize} from page ${tiledResult.fullWidth}x${tiledResult.fullHeight}`,
+      text: `✅ Captured ${tiledResult.tiles.length} tiles (${tiledResult.tileSize}x${tiledResult.tileSize} each) from page measuring ${tiledResult.fullWidth}x${tiledResult.fullHeight} pixels`,
     });
     
     return { content };
@@ -132,7 +132,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         },
         {
           type: "text",
-          text: `Screenshot captured: ${result.viewport.width}x${result.viewport.height}`,
+          text: `✅ Screenshot captured: ${result.viewport.width}x${result.viewport.height} pixels`,
         },
       ],
     };

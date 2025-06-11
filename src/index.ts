@@ -50,8 +50,9 @@ program
       if ('tiles' in result) {
         // Handle tiled screenshot
         const tiledResult = result as TiledScreenshotResult;
-        console.error(`Full page: ${tiledResult.fullWidth}x${tiledResult.fullHeight}`);
-        console.error(`Created ${tiledResult.tiles.length} tiles of ${tiledResult.tileSize}x${tiledResult.tileSize}`);
+        console.error(`✅ Screenshot captured successfully!`);
+        console.error(`📐 Full page dimensions: ${tiledResult.fullWidth}x${tiledResult.fullHeight}`);
+        console.error(`🔲 Created ${tiledResult.tiles.length} tiles of ${tiledResult.tileSize}x${tiledResult.tileSize} each`);
         
         if (options.output) {
           // Save tiles with numbered filenames
@@ -71,8 +72,8 @@ program
         // Handle regular screenshot
         if (options.output) {
           writeFileSync(options.output, result.screenshot);
-          console.error(`Screenshot saved to: ${options.output}`);
-          console.error(`Dimensions: ${result.viewport.width}x${result.viewport.height}`);
+          console.error(`✅ Screenshot saved to: ${options.output}`);
+          console.error(`📐 Dimensions: ${result.viewport.width}x${result.viewport.height}`);
         } else {
           // Output binary data to stdout
           process.stdout.write(result.screenshot);
