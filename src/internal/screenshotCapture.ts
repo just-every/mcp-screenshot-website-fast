@@ -82,6 +82,7 @@ async function getBrowser(forceRestart: boolean = false): Promise<Browser> {
 }
 
 export async function closeBrowser(): Promise<void> {
+  stopHealthCheck(); // Always stop health check when closing browser
   if (browser && browser.isConnected()) {
     await browser.close();
     browser = null;
@@ -102,6 +103,9 @@ function startHealthCheck() {
       browserLaunchPromise = null;
     }
   }, 30000); // Check every 30 seconds
+  
+  // Allow process to exit if this is the only thing keeping it alive
+  healthCheckInterval.unref();
 }
 
 function stopHealthCheck() {
@@ -407,67 +411,67 @@ async function captureTiledScreenshot(options: ScreenshotOptions): Promise<Tiled
         fullPage: true,
         encoding: 'binary'
       }) as Buffer;
-    
-    // Import sharp dynamically to process the image
-    const sharp = await import('sharp');
-    const metadata = await sharp.default(fullPageScreenshot).metadata();
-    const dimensions = {
-      width: metadata.width!,
-      height: metadata.height!
-    };
-    
-    logger.info(`Full page dimensions: ${dimensions.width}x${dimensions.height}`);
-    
-    // Calculate number of tiles needed
-    const cols = Math.ceil(dimensions.width / tileSize);
-    const rows = Math.ceil(dimensions.height / tileSize);
-    const tiles = [];
-    
-    logger.info(`Creating ${rows}x${cols} tiles (${rows * cols} total)`);
-    
-    // Cut the full page screenshot into tiles
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const x = col * tileSize;
-        const y = row * tileSize;
-        const width = Math.min(tileSize, dimensions.width - x);
-        const height = Math.min(tileSize, dimensions.height - y);
-        
-        // Extract tile from full page screenshot
-        const tileBuffer = await sharp.default(fullPageScreenshot)
-          .extract({
-            left: x,
-            top: y,
+      
+      // Import sharp dynamically to process the image
+      const sharp = await import('sharp');
+      const metadata = await sharp.default(fullPageScreenshot).metadata();
+      const dimensions = {
+        width: metadata.width!,
+        height: metadata.height!
+      };
+      
+      logger.info(`Full page dimensions: ${dimensions.width}x${dimensions.height}`);
+      
+      // Calculate number of tiles needed
+      const cols = Math.ceil(dimensions.width / tileSize);
+      const rows = Math.ceil(dimensions.height / tileSize);
+      const tiles = [];
+      
+      logger.info(`Creating ${rows}x${cols} tiles (${rows * cols} total)`);
+      
+      // Cut the full page screenshot into tiles
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const x = col * tileSize;
+          const y = row * tileSize;
+          const width = Math.min(tileSize, dimensions.width - x);
+          const height = Math.min(tileSize, dimensions.height - y);
+          
+          // Extract tile from full page screenshot
+          const tileBuffer = await sharp.default(fullPageScreenshot)
+            .extract({
+              left: x,
+              top: y,
+              width,
+              height
+            })
+            .png()
+            .toBuffer();
+          
+          tiles.push({
+            screenshot: tileBuffer,
+            index: row * cols + col,
+            row,
+            col,
+            x,
+            y,
             width,
             height
-          })
-          .png()
-          .toBuffer();
-        
-        tiles.push({
-          screenshot: tileBuffer,
-          index: row * cols + col,
-          row,
-          col,
-          x,
-          y,
-          width,
-          height
-        });
-        
-        logger.debug(`Created tile ${row},${col} at ${x},${y} (${width}x${height})`);
+          });
+          
+          logger.debug(`Created tile ${row},${col} at ${x},${y} (${width}x${height})`);
+        }
       }
-    }
-    
-    const result: TiledScreenshotResult = {
-      url: options.url,
-      tiles,
-      timestamp: new Date(),
-      fullWidth: dimensions.width,
-      fullHeight: dimensions.height,
-      tileSize,
-      format: 'png'
-    };
+      
+      const result: TiledScreenshotResult = {
+        url: options.url,
+        tiles,
+        timestamp: new Date(),
+        fullWidth: dimensions.width,
+        fullHeight: dimensions.height,
+        tileSize,
+        format: 'png'
+      };
       
       // Clean up the page after successful capture
       if (page && !page.isClosed()) {
