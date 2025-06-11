@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { CrawlQueue } from './crawler/queue.js';
-import { CrawlOptions } from './types.js';
-import { readFileSync } from 'fs';
+import { captureScreenshot, closeBrowser } from './internal/screenshotCapture.js';
+import { ScreenshotOptions, TiledScreenshotResult } from './types.js';
+import { readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -18,85 +18,71 @@ const packageJson = JSON.parse(
 const program = new Command();
 
 program
-  .name('mcp')
-  .description('Markdown Content Preprocessor - Extract and convert web content to clean Markdown')
+  .name('mcp-screenshot')
+  .description('Fast screenshot capture tool for web pages - optimized for Claude Vision API')
   .version(packageJson.version);
 
 program
-  .command('fetch <url>')
-  .description('Fetch a URL and convert to Markdown')
-  .option('-d, --depth <number>', 'Crawl depth (0 = single page)', '0')
-  .option('-c, --concurrency <number>', 'Max concurrent requests', '3')
-  .option('--no-robots', 'Ignore robots.txt')
-  .option('--all-origins', 'Allow cross-origin crawling')
-  .option('-u, --user-agent <string>', 'Custom user agent')
-  .option('--cache-dir <path>', 'Cache directory', '.cache')
-  .option('-t, --timeout <ms>', 'Request timeout in milliseconds', '30000')
-  .option('-o, --output <format>', 'Output format: json, markdown, or both', 'markdown')
+  .command('capture <url>')
+  .description('Capture a screenshot of a URL')
+  .option('-w, --width <pixels>', 'Viewport width (max 1072)', '1072')
+  .option('-h, --height <pixels>', 'Viewport height (max 1072)', '1072')
+  .option('--no-full-page', 'Disable full page capture and tiling')
+  .option('--wait-until <event>', 'Wait until event: load, domcontentloaded, networkidle0, networkidle2', 'networkidle2')
+  .option('--wait-for <ms>', 'Additional wait time in milliseconds')
+  .option('-o, --output <path>', 'Output file path (required for tiled output)')
   .action(async (url: string, options) => {
     try {
-      const crawlOptions: CrawlOptions = {
-        depth: parseInt(options.depth, 10),
-        maxConcurrency: parseInt(options.concurrency, 10),
-        respectRobots: options.robots,
-        sameOriginOnly: !options.allOrigins,
-        userAgent: options.userAgent,
-        cacheDir: options.cacheDir,
-        timeout: parseInt(options.timeout, 10)
+      const screenshotOptions: ScreenshotOptions = {
+        url,
+        viewport: {
+          width: Math.min(parseInt(options.width, 10), 1072),
+          height: Math.min(parseInt(options.height, 10), 1072)
+        },
+        fullPage: options.fullPage !== false,  // Default to true unless explicitly disabled
+        waitUntil: options.waitUntil,
+        waitFor: options.waitFor ? parseInt(options.waitFor, 10) : undefined
       };
 
-      const queue = new CrawlQueue(crawlOptions);
-      await queue.init();
+      console.error(`Capturing screenshot of ${url}...`);
+      const result = await captureScreenshot(screenshotOptions);
 
-      console.error(`Fetching ${url}...`);
-      const results = await queue.crawl(url);
-
-      if (options.output === 'json') {
-        console.log(JSON.stringify(results, null, 2));
-      } else if (options.output === 'markdown') {
-        results.forEach(result => {
-          if (result.error) {
-            console.error(`Error for ${result.url}: ${result.error}`);
-          } else if (result.markdown) {
-            console.log(result.markdown);
-            if (results.length > 1) {
-              console.log('\n---\n'); // Separator between multiple pages
-            }
+      if ('tiles' in result) {
+        // Handle tiled screenshot
+        const tiledResult = result as TiledScreenshotResult;
+        console.error(`Full page: ${tiledResult.fullWidth}x${tiledResult.fullHeight}`);
+        console.error(`Created ${tiledResult.tiles.length} tiles of ${tiledResult.tileSize}x${tiledResult.tileSize}`);
+        
+        if (options.output) {
+          // Save tiles with numbered filenames
+          const ext = '.png';
+          const base = options.output.endsWith(ext) ? options.output.slice(0, -ext.length) : options.output;
+          
+          for (const tile of tiledResult.tiles) {
+            const filename = `${base}-tile-${tile.row}-${tile.col}${ext}`;
+            writeFileSync(filename, tile.screenshot);
+            console.error(`Saved tile ${tile.row},${tile.col} to: ${filename} (${tile.width}x${tile.height})`);
           }
-        });
-      } else if (options.output === 'both') {
-        results.forEach(result => {
-          console.log(`\n## URL: ${result.url}\n`);
-          if (result.error) {
-            console.error(`Error: ${result.error}`);
-          } else {
-            console.log(result.markdown);
-          }
-        });
+        } else {
+          console.error('Error: Full page tiled output requires -o/--output flag');
+          process.exit(1);
+        }
+      } else {
+        // Handle regular screenshot
+        if (options.output) {
+          writeFileSync(options.output, result.screenshot);
+          console.error(`Screenshot saved to: ${options.output}`);
+          console.error(`Dimensions: ${result.viewport.width}x${result.viewport.height}`);
+        } else {
+          // Output binary data to stdout
+          process.stdout.write(result.screenshot);
+        }
       }
 
-      // Exit with error if any fetch failed
-      const hasErrors = results.some(r => r.error);
-      if (hasErrors) {
-        process.exit(1);
-      }
+      await closeBrowser();
     } catch (error) {
       console.error('Error:', error instanceof Error ? error.message : error);
-      process.exit(1);
-    }
-  });
-
-program
-  .command('clear-cache')
-  .description('Clear the cache directory')
-  .option('--cache-dir <path>', 'Cache directory', '.cache')
-  .action(async (options) => {
-    try {
-      const { rm } = await import('fs/promises');
-      await rm(options.cacheDir, { recursive: true, force: true });
-      console.log(`Cache cleared: ${options.cacheDir}`);
-    } catch (error) {
-      console.error('Error clearing cache:', error);
+      await closeBrowser();
       process.exit(1);
     }
   });

@@ -60,7 +60,7 @@ jobs:
           
           Install with:
           ```bash
-          npm install @just-every/mcp-read-website-fast@${{ env.VERSION }}
+          npm install @just-every/mcp-screenshot-website-fast@${{ env.VERSION }}
           ```
         draft: false
         prerelease: false

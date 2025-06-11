@@ -11,13 +11,11 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 // Lazy load heavy dependencies
-let fetchMarkdownModule: any;
-let fsPromises: any;
-let pathModule: any;
+let screenshotModule: any;
 
 const server = new Server(
   {
-    name: "read-website-fast",
+    name: "screenshot-website-fast",
     version: "0.1.0",
   },
   {
@@ -29,25 +27,39 @@ const server = new Server(
 );
 
 // Tool definition
-const READ_WEBSITE_TOOL: Tool = {
-  name: "read_website_fast",
-  description: "Quickly reads webpages and converts to markdown for fast, token efficient web scraping",
+const SCREENSHOT_TOOL: Tool = {
+  name: "screenshot_website_fast",
+  description: "Capture high-quality screenshots of web pages optimized for Claude Vision API",
   inputSchema: {
     type: "object",
     properties: {
       url: {
         type: "string",
-        description: "HTTP/HTTPS URL to fetch and convert to markdown",
+        description: "HTTP/HTTPS URL to capture",
       },
-      depth: {
+      width: {
         type: "number",
-        description: "Crawl depth (0 = single page)",
-        default: 0,
+        description: "Viewport width in pixels (max 1072)",
+        default: 1072,
       },
-      respectRobots: {
+      height: {
+        type: "number",
+        description: "Viewport height in pixels (max 1072)",
+        default: 1072,
+      },
+      fullPage: {
         type: "boolean",
-        description: "Whether to respect robots.txt",
+        description: "Capture full page screenshot with tiling",
         default: true,
+      },
+      waitUntil: {
+        type: "string",
+        description: "Wait until event: load, domcontentloaded, networkidle0, networkidle2",
+        default: "networkidle2",
+      },
+      waitFor: {
+        type: "number",
+        description: "Additional wait time in milliseconds",
       },
     },
     required: ["url"],
@@ -55,50 +67,76 @@ const READ_WEBSITE_TOOL: Tool = {
 };
 
 // Resources definitions
-const RESOURCES: Resource[] = [
-  {
-    uri: "read-website-fast://status",
-    name: "Cache Status",
-    mimeType: "application/json",
-    description: "Get cache status information",
-  },
-  {
-    uri: "read-website-fast://clear-cache",
-    name: "Clear Cache",
-    mimeType: "application/json",
-    description: "Clear the cache directory",
-  },
-];
+const RESOURCES: Resource[] = [];
 
 // Handle tool listing
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [READ_WEBSITE_TOOL],
+  tools: [SCREENSHOT_TOOL],
 }));
 
 // Handle tool execution
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name !== "read_website_fast") {
+  if (request.params.name !== "screenshot_website_fast") {
     throw new Error(`Unknown tool: ${request.params.name}`);
   }
 
   // Lazy load the module on first use
-  if (!fetchMarkdownModule) {
-    fetchMarkdownModule = await import("./internal/fetchMarkdown.js");
+  if (!screenshotModule) {
+    screenshotModule = await import("./internal/screenshotCapture.js");
   }
 
   const args = request.params.arguments as any;
-  const result = await fetchMarkdownModule.fetchMarkdown(args.url, {
-    depth: args.depth ?? 0,
-    respectRobots: args.respectRobots ?? true,
+  
+  const result = await screenshotModule.captureScreenshot({
+    url: args.url,
+    viewport: {
+      width: Math.min(args.width ?? 1072, 1072),
+      height: Math.min(args.height ?? 1072, 1072),
+    },
+    fullPage: args.fullPage ?? true,
+    waitUntil: args.waitUntil ?? "networkidle2",
+    waitFor: args.waitFor,
   });
 
-  if (result.error) {
-    throw new Error(result.error);
-  }
+  if ('tiles' in result) {
+    // Handle tiled screenshot result
+    const tiledResult = result as any; // TiledScreenshotResult
+    const content = [];
+    
+    // Add each tile as an image
+    for (const tile of tiledResult.tiles) {
+      content.push({
+        type: "image",
+        data: tile.screenshot.toString('base64'),
+        mimeType: "image/png",
+      });
+    }
+    
+    // Add summary text
+    content.push({
+      type: "text",
+      text: `Captured ${tiledResult.tiles.length} tiles of ${tiledResult.tileSize}x${tiledResult.tileSize} from page ${tiledResult.fullWidth}x${tiledResult.fullHeight}`,
+    });
+    
+    return { content };
+  } else {
+    // Handle regular screenshot
+    const base64Screenshot = result.screenshot.toString('base64');
 
-  return {
-    content: [{ type: "text", text: result.markdown }],
-  };
+    return {
+      content: [
+        {
+          type: "image",
+          data: base64Screenshot,
+          mimeType: "image/png",
+        },
+        {
+          type: "text",
+          text: `Screenshot captured: ${result.viewport.width}x${result.viewport.height}`,
+        },
+      ],
+    };
+  }
 });
 
 // Handle resource listing
@@ -107,117 +145,15 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => ({
 }));
 
 // Handle resource reading
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-  const uri = request.params.uri;
-
-  // Lazy load fs and path modules
-  if (!fsPromises) {
-    fsPromises = await import("fs/promises");
-  }
-  if (!pathModule) {
-    pathModule = await import("path");
-  }
-
-  if (uri === "read-website-fast://status") {
-    try {
-      const cacheDir = ".cache";
-      const files = await fsPromises.readdir(cacheDir).catch(() => []);
-
-      let totalSize = 0;
-      for (const file of files) {
-        const stats = await fsPromises
-          .stat(pathModule.join(cacheDir, file))
-          .catch(() => null);
-        if (stats) {
-          totalSize += stats.size;
-        }
-      }
-
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: "application/json",
-            text: JSON.stringify(
-              {
-                cacheSize: totalSize,
-                cacheFiles: files.length,
-                cacheSizeFormatted: `${(totalSize / 1024 / 1024).toFixed(2)} MB`,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: "application/json",
-            text: JSON.stringify(
-              {
-                error: "Failed to get cache status",
-                message: error instanceof Error ? error.message : "Unknown error",
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    }
-  }
-
-  if (uri === "read-website-fast://clear-cache") {
-    try {
-      await fsPromises.rm(".cache", { recursive: true, force: true });
-
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: "application/json",
-            text: JSON.stringify(
-              {
-                status: "success",
-                message: "Cache cleared successfully",
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: "application/json",
-            text: JSON.stringify(
-              {
-                status: "error",
-                message: error instanceof Error ? error.message : "Failed to clear cache",
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    }
-  }
-
-  throw new Error(`Unknown resource: ${uri}`);
+server.setRequestHandler(ReadResourceRequestSchema, async () => {
+  throw new Error(`No resources available`);
 });
 
 // Start the server
 async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("read-website-fast MCP server running");
+  console.error("screenshot-website-fast MCP server running");
 }
 
 runServer().catch((error) => {

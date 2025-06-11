@@ -1,8 +1,6 @@
-# MCP Read JustEvery Website
+# MCP Screenshot Website Fast
 
-Existing MCP web crawlers are slow and consume large quantities of tokens. This pauses the development process and provides incomplete results as LLMs need to parse whole web pages.
-
-This MCP package fetches web pages locally, strips noise, and converts content to clean Markdown while preserving links. Designed for Claude Code, IDEs and LLM pipelines with minimal token footprint. Crawl sites locally with minimal dependencies.
+Fast, efficient screenshot capture tool for web pages - optimized for Claude Vision API. Automatically tiles full pages into 1072x1072 chunks for optimal AI processing.
 
 ## MCP Server Configuration
 
@@ -13,74 +11,68 @@ This tool can be used as an MCP (Model Context Protocol) server with Claude Desk
 ### Claude Code
 
 ```bash
-claude mcp add read-website-fast -s user -- npx -y @just-every/mcp-read-website-fast
+claude mcp add screenshot-website-fast -s user -- npx -y @just-every/mcp-screenshot-website-fast
 ```
 
 ### VS Code
 
 ```bash
-code --add-mcp '{"name":"read-website-fast","command":"npx","args":["-y","@just-every/mcp-read-website-fast"]}'
+code --add-mcp '{"name":"screenshot-website-fast","command":"npx","args":["-y","@just-every/mcp-screenshot-website-fast"]}'
 ```
 
 ### Cursor
 
 ```bash
-cursor://anysphere.cursor-deeplink/mcp/install?name=read-website-fast&config=eyJyZWFkLXdlYnNpdGUtZmFzdCI6eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqdXN0LWV2ZXJ5L21jcC1yZWFkLXdlYnNpdGUtZmFzdCJdfX0=
+cursor://anysphere.cursor-deeplink/mcp/install?name=screenshot-website-fast&config=eyJzY3JlZW5zaG90LXdlYnNpdGUtZmFzdCI6eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqdXN0LWV2ZXJ5L21jcC1zY3JlZW5zaG90LXdlYnNpdGUtZmFzdCJdfX0=
 ```
 
 ### JetBrains IDEs
 
 Settings → Tools → AI Assistant → Model Context Protocol (MCP) → Add
 
-Choose “As JSON” and paste:
+Choose "As JSON" and paste:
 
 ```json
-{"command":"npx","args":["-y","@just-every/mcp-read-website-fast"]}
+{"command":"npx","args":["-y","@just-every/mcp-screenshot-website-fast"]}
 ```
-
-Or, in the chat window, type /add and fill in the same JSON—both paths land the server in a single step. ￼
 
 ### Raw JSON (works in any MCP client)
 
 ```json
 {
   "mcpServers": {
-    "read-website-fast": {
+    "screenshot-website-fast": {
       "command": "npx",
-      "args": ["-y", "@just-every/mcp-read-website-fast"]
+      "args": ["-y", "@just-every/mcp-screenshot-website-fast"]
     }
   }
 }
 ```
 
-Drop this into your client’s mcp.json (e.g. .vscode/mcp.json, ~/.cursor/mcp.json, or .mcp.json for Claude).
-
-
+Drop this into your client's mcp.json (e.g. .vscode/mcp.json, ~/.cursor/mcp.json, or .mcp.json for Claude).
 
 ## Features
 
-- **Fast startup** using official MCP SDK with lazy loading for optimal performance
-- **Content extraction** using Mozilla Readability (same as Firefox Reader View)
-- **HTML to Markdown** conversion with Turndown + GFM support
-- **Smart caching** with SHA-256 hashed URLs
-- **Polite crawling** with robots.txt support and rate limiting
-- **Concurrent fetching** with configurable depth crawling
-- **Stream-first design** for low memory usage
-- **Link preservation** for knowledge graphs
-- **Optional chunking** for downstream processing
+- **Fast screenshot capture** using Puppeteer headless browser
+- **Claude Vision optimized** with automatic resolution limiting (1072x1072 for optimal 1.15 megapixels)
+- **Automatic tiling** - Full pages are automatically split into 1072x1072 tiles
+- **Always fresh content** - No caching ensures up-to-date screenshots
+- **Configurable viewports** for responsive testing
+- **Wait strategies** for dynamic content (networkidle, custom delays)
+- **Full page capture** by default for complete page screenshots
+- **Minimal dependencies** for fast npm installs
+- **MCP integration** for seamless AI workflows
 
 ### Available Tools
 
-- `read_website_fast` - Fetches a webpage and converts it to clean markdown
+- `screenshot_website_fast` - Captures a high-quality screenshot of a webpage
   - Parameters:
-    - `url` (required): The HTTP/HTTPS URL to fetch
-    - `depth` (optional): Crawl depth (0 = single page)
-    - `respectRobots` (optional): Whether to respect robots.txt
-
-### Available Resources
-
-- `read-website-fast://status` - Get cache statistics
-- `read-website-fast://clear-cache` - Clear the cache directory
+    - `url` (required): The HTTP/HTTPS URL to capture
+    - `width` (optional): Viewport width in pixels (max 1072, default: 1072)
+    - `height` (optional): Viewport height in pixels (max 1072, default: 1072)
+    - `fullPage` (optional): Capture full page screenshot (default: true)
+    - `waitUntil` (optional): Wait until event: load, domcontentloaded, networkidle0, networkidle2 (default: networkidle2)
+    - `waitFor` (optional): Additional wait time in milliseconds
 
 ## Development Usage
 
@@ -91,61 +83,43 @@ npm install
 npm run build
 ```
 
-### Single page fetch
+### Capture screenshot
 ```bash
-npm run dev fetch https://example.com/article
-```
+# Full page with automatic tiling (default)
+npm run dev capture https://example.com -o screenshot.png
 
-### Crawl with depth
-```bash
-npm run dev fetch https://example.com --depth 2 --concurrency 5
-```
+# Viewport-only screenshot  
+npm run dev capture https://example.com --no-full-page -o screenshot.png
 
-### Output formats
-```bash
-# Markdown only (default)
-npm run dev fetch https://example.com
-
-# JSON output with metadata
-npm run dev fetch https://example.com --output json
-
-# Both URL and markdown
-npm run dev fetch https://example.com --output both
+# Wait for specific conditions
+npm run dev capture https://example.com --wait-until networkidle0 --wait-for 2000 -o screenshot.png
 ```
 
 ### CLI Options
 
-- `-d, --depth <number>` - Crawl depth (0 = single page, default: 0)
-- `-c, --concurrency <number>` - Max concurrent requests (default: 3)
-- `--no-robots` - Ignore robots.txt
-- `--all-origins` - Allow cross-origin crawling
-- `-u, --user-agent <string>` - Custom user agent
-- `--cache-dir <path>` - Cache directory (default: .cache)
-- `-t, --timeout <ms>` - Request timeout in milliseconds (default: 30000)
-- `-o, --output <format>` - Output format: json, markdown, or both (default: markdown)
-
-### Clear cache
-```bash
-npm run dev clear-cache
-```
+- `-w, --width <pixels>` - Viewport width (max 1072, default: 1072)
+- `-h, --height <pixels>` - Viewport height (max 1072, default: 1072)
+- `--no-full-page` - Disable full page capture and tiling
+- `--wait-until <event>` - Wait until event: load, domcontentloaded, networkidle0, networkidle2
+- `--wait-for <ms>` - Additional wait time in milliseconds
+- `-o, --output <path>` - Output file path (required for tiled output)
 
 ## Architecture
 
 ```
-mcp/
+mcp-screenshot-website-fast/
 ├── src/
-│   ├── crawler/        # URL fetching, queue management, robots.txt
-│   ├── parser/         # DOM parsing, Readability, Turndown conversion
-│   ├── cache/          # Disk-based caching with SHA-256 keys
-│   ├── utils/          # Logger, chunker utilities
-│   └── index.ts        # CLI entry point
+│   ├── internal/       # Core screenshot capture logic
+│   ├── utils/          # Logger and utilities
+│   ├── index.ts        # CLI entry point
+│   └── serve.ts        # MCP server entry point
 ```
 
 ## Development
 
 ```bash
 # Run in development mode
-npm run dev fetch https://example.com
+npm run dev capture https://example.com -o screenshot.png
 
 # Build for production
 npm run build
@@ -159,6 +133,16 @@ npm run typecheck
 # Linting
 npm run lint
 ```
+
+## Why This Tool?
+
+Built specifically for AI vision workflows:
+
+1. **Optimized for Claude Vision API** - Automatic resolution limiting to 1072x1072 pixels (1.15 megapixels)
+2. **Automatic tiling** - Full pages split into perfect chunks for AI processing
+3. **Always fresh** - No caching ensures you get the latest content
+4. **MCP native** - First-class integration with AI development tools
+5. **Simple API** - Clean, straightforward interface for capturing screenshots
 
 ## License
 

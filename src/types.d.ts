@@ -1,38 +1,40 @@
-export interface CrawlOptions {
-  depth?: number;
-  maxConcurrency?: number;
-  respectRobots?: boolean;
-  sameOriginOnly?: boolean;
-  userAgent?: string;
-  cacheDir?: string;
-  timeout?: number;
-}
-
-export interface Article {
-  title: string;
-  content: string;
-  textContent: string;
-  length: number;
-  excerpt: string;
-  byline: string | null;
-  dir: string | null;
-  siteName: string | null;
-  lang: string | null;
-  publishedTime: string | null;
-  baseUrl?: string;
-}
-
-export interface CrawlResult {
+export interface ScreenshotOptions {
   url: string;
-  markdown: string;
-  title?: string;
-  links?: string[];
-  error?: string;
+  viewport?: {
+    width: number;
+    height: number;
+  };
+  fullPage?: boolean;
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2';
+  waitFor?: number;
 }
 
-export interface CacheEntry {
+export interface ScreenshotResult {
   url: string;
-  markdown: string;
-  timestamp: number;
-  title?: string;
+  screenshot: Buffer;
+  timestamp: Date;
+  viewport: {
+    width: number;
+    height: number;
+  };
+  format: 'png';
+}
+
+export interface TiledScreenshotResult {
+  url: string;
+  tiles: {
+    screenshot: Buffer;
+    index: number;
+    row: number;
+    col: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[];
+  timestamp: Date;
+  fullWidth: number;
+  fullHeight: number;
+  tileSize: number;
+  format: 'png';
 }

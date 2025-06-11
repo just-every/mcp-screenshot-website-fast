@@ -84,5 +84,5 @@ git push --follow-tags
 
 The package will be available at:
 ```
-npm install @just-every/mcp-read-website-fast
+npm install @just-every/mcp-screenshot-website-fast
 ```

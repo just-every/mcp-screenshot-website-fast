@@ -6,9 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Development
 ```bash
-npm run dev fetch <URL>              # Fetch single page in dev mode
-npm run dev fetch <URL> --depth 2    # Crawl with depth
-npm run dev clear-cache              # Clear the cache
+npm run dev capture <URL> -o out.png # Capture screenshot (tiled by default)
+npm run dev capture <URL> --no-full-page -o out.png # Viewport only
 npm run serve:dev                    # Run MCP server in dev mode
 ```
 
@@ -28,29 +27,22 @@ npm test                             # Run tests (Vitest - no tests implemented)
 
 ## Architecture
 
-This is a TypeScript-based web content extractor that converts web pages to clean Markdown, designed for LLM/RAG pipelines. It provides both CLI and MCP server interfaces.
+This is a TypeScript-based screenshot capture tool optimized for Claude Vision API. It captures high-quality screenshots of web pages with configurable viewports and wait strategies.
 
 ### Core Components
 
-1. **Fetching & Crawling** (`src/crawler/`):
-   - Uses `undici` for HTTP requests
-   - Respects robots.txt via `robots-parser`
-   - Manages crawl queue with configurable concurrency using `p-limit`
+1. **Screenshot Capture** (`src/internal/screenshotCapture.ts`):
+   - Uses Puppeteer for headless Chrome
+   - Configurable viewport (max 1568x1568 for Claude Vision)
+   - Multiple wait strategies for dynamic content
+   - Browser instance reuse for performance
 
-2. **Content Extraction** (`src/parser/`):
-   - `@mozilla/readability` for article extraction (Firefox Reader View engine)
-   - `jsdom` for DOM parsing
-   - `turndown` for HTML→Markdown conversion
-   - Converts relative URLs to absolute in markdown output
+2. **No caching** - Always captures fresh content
 
-3. **Caching** (`src/cache/`):
-   - File-based cache using SHA-256 hashes
-   - Stores both metadata and content
-
-4. **Entry Points**:
+3. **Entry Points**:
    - `src/index.ts`: CLI interface using Commander
-   - `src/serve.ts`: MCP server using fastmcp
-   - `src/internal/fetchMarkdown.ts`: Core API used by both interfaces
+   - `src/serve.ts`: MCP server using SDK
+   - Both share the same screenshot capture core
 
 ### Key Technical Details
 
@@ -62,7 +54,5 @@ This is a TypeScript-based web content extractor that converts web pages to clea
 ### MCP Server
 
 When running as MCP server (`npm run serve`), provides:
-- Tool: `read_website_fast` - Fetches and converts webpages
-- Resources: 
-  - `read-website-fast://status` - Cache statistics
-  - `read-website-fast://clear-cache` - Clear cache
+- Tool: `screenshot_website_fast` - Captures webpage screenshots (full page with automatic tiling)
+- No resources (caching removed for always-fresh content)

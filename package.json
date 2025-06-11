@@ -1,10 +1,10 @@
 {
-  "name": "@just-every/mcp-read-website-fast",
+  "name": "@just-every/mcp-screenshot-website-fast",
   "version": "0.1.3",
-  "description": "Markdown Content Preprocessor - Fetch web pages, extract content, convert to clean Markdown",
+  "description": "Fast screenshot capture tool for web pages - optimized for Claude Vision API",
   "main": "dist/index.js",
   "bin": {
-    "mcp-read-website-fast": "bin/mcp-read-website.js"
+    "mcp-screenshot-website-fast": "bin/mcp-screenshot-website.js"
   },
   "files": [
     "dist/**/*",
@@ -29,11 +29,11 @@
     "mcp",
     "mcp-server",
     "model-context-protocol",
-    "markdown",
-    "web-scraper",
-    "readability",
-    "content-extraction",
-    "rag",
+    "screenshot",
+    "web-capture",
+    "puppeteer",
+    "headless",
+    "vision",
     "llm",
     "claude",
     "cursor",
@@ -42,33 +42,26 @@
   "author": "Just Every",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/just-every/mcp-read-website-fast.git"
+    "url": "git+https://github.com/just-every/mcp-screenshot-website-fast.git"
   },
   "bugs": {
-    "url": "https://github.com/just-every/mcp-read-website-fast/issues"
+    "url": "https://github.com/just-every/mcp-screenshot-website-fast/issues"
   },
-  "homepage": "https://github.com/just-every/mcp-read-website-fast#readme",
+  "homepage": "https://github.com/just-every/mcp-screenshot-website-fast#readme",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "@mozilla/readability": "^0.6.0",
     "commander": "^14.0.0",
-    "jsdom": "^26.1.0",
-    "p-limit": "^6.2.0",
-    "robots-parser": "^3.0.1",
-    "turndown": "^7.1.3",
-    "turndown-plugin-gfm": "^1.0.2",
-    "undici": "^7.10.0"
+    "puppeteer": "^24.0.0",
+    "sharp": "^0.34.0"
   },
   "devDependencies": {
-    "@types/jsdom": "^21.1.6",
     "@types/node": "^24.0.0",
-    "@types/turndown": "^5.0.4",
     "@typescript-eslint/eslint-plugin": "^8.34.0",
     "@typescript-eslint/parser": "^8.34.0",
     "eslint": "^9.28.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3",
+    "typescript": "^5.8.3",
     "vitest": "^3.2.3"
   },
   "engines": {

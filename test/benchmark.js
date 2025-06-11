@@ -50,7 +50,7 @@ async function runBenchmarks() {
   
   // Test 3: Via bin script (production path)
   console.log('Testing via bin script...');
-  results.push(await measureStartupTime('node', ['bin/mcp-read-website.js'], 'Bin script'));
+  results.push(await measureStartupTime('node', ['bin/mcp-screenshot-website.js'], 'Bin script'));
   
   // Test 4: Memory usage
   console.log('\nMeasuring memory usage...');
