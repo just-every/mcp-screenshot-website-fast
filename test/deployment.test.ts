@@ -35,17 +35,17 @@ describe('Deployment Tests', () => {
 
       serverProcess.stderr.on('data', (data) => {
         stderr += data.toString();
+        // Check if server started message appears (new logging format)
+        // All logs now go to stderr for MCP servers
+        if (stderr.includes('MCP server connected and running successfully!')) {
+          serverProcess.kill();
+          expect(stderr).toContain('MCP server connected and running successfully!');
+          resolve();
+        }
       });
 
       serverProcess.stdout.on('data', (data) => {
         stdout += data.toString();
-        // Check if server started message appears (new logging format)
-        // INFO logs go to stdout, not stderr
-        if (stdout.includes('MCP server connected and running successfully!')) {
-          serverProcess.kill();
-          expect(stdout).toContain('MCP server connected and running successfully!');
-          resolve();
-        }
       });
 
       // Timeout fallback
@@ -70,17 +70,17 @@ describe('Deployment Tests', () => {
 
       binProcess.stderr.on('data', (data) => {
         stderr += data.toString();
+        // Check if server started message appears (new logging format)
+        // All logs now go to stderr for MCP servers
+        if (stderr.includes('MCP server connected and running successfully!')) {
+          binProcess.kill();
+          expect(stderr).toContain('MCP server connected and running successfully!');
+          resolve();
+        }
       });
 
       binProcess.stdout.on('data', (data) => {
         stdout += data.toString();
-        // Check if server started message appears (new logging format)
-        // INFO logs go to stdout, not stderr
-        if (stdout.includes('MCP server connected and running successfully!')) {
-          binProcess.kill();
-          expect(stdout).toContain('MCP server connected and running successfully!');
-          resolve();
-        }
       });
 
       // Timeout fallback

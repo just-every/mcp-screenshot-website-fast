@@ -21,16 +21,9 @@ export class Logger {
         const levelName = LogLevel[level];
         const prefix = `[${timestamp}] [${levelName}] [${this.name}]`;
 
-        switch (level) {
-            case LogLevel.ERROR:
-                console.error(prefix, message, ...args);
-                break;
-            case LogLevel.WARN:
-                console.warn(prefix, message, ...args);
-                break;
-            default:
-                console.log(prefix, message, ...args);
-        }
+        // For MCP servers, all logs should go to stderr to avoid
+        // interfering with the JSON-RPC communication on stdout
+        console.error(prefix, message, ...args);
     }
 
     error(message: string, ...args: any[]): void {
