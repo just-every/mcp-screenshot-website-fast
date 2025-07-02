@@ -12,10 +12,19 @@ import {
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { logger, LogLevel } from './utils/logger.js';
+
+// Enable debug logging for MCP server
+logger.setLevel(LogLevel.DEBUG);
+logger.info('MCP Server starting up...');
+logger.debug('Node version:', process.version);
+logger.debug('Working directory:', process.cwd());
+logger.debug('Environment:', { LOG_LEVEL: process.env.LOG_LEVEL });
 
 // Lazy load heavy dependencies
 let screenshotModule: any;
 
+logger.debug('Creating MCP server instance...');
 const server = new Server(
     {
         name: 'screenshot-website-fast',
@@ -28,6 +37,7 @@ const server = new Server(
         },
     }
 );
+logger.info('MCP server instance created successfully');
 
 // Tool definition
 const SCREENSHOT_TOOL: Tool = {
@@ -80,9 +90,17 @@ const SCREENSHOT_TOOL: Tool = {
 const RESOURCES: Resource[] = [];
 
 // Handle tool listing
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [SCREENSHOT_TOOL],
-}));
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+    logger.debug('Received ListTools request');
+    const response = {
+        tools: [SCREENSHOT_TOOL],
+    };
+    logger.debug(
+        'Returning tools:',
+        response.tools.map(t => t.name)
+    );
+    return response;
+});
 
 // Helper function to generate unique filename
 function generateFilename(url: string, index?: number): string {
@@ -95,19 +113,35 @@ function generateFilename(url: string, index?: number): string {
 
 // Handle tool execution
 server.setRequestHandler(CallToolRequestSchema, async request => {
+    logger.info('Received CallTool request:', request.params.name);
+    logger.debug('Request params:', JSON.stringify(request.params, null, 2));
+
     try {
         if (request.params.name !== 'screenshot_website_fast') {
-            throw new Error(`Unknown tool: ${request.params.name}`);
+            const error = `Unknown tool: ${request.params.name}`;
+            logger.error(error);
+            throw new Error(error);
         }
 
         // Lazy load the module on first use
         if (!screenshotModule) {
+            logger.debug('Lazy loading screenshot module...');
             screenshotModule = await import('./internal/screenshotCapture.js');
+            logger.info('Screenshot module loaded successfully');
         }
 
         const args = request.params.arguments as any;
-        console.error(`[MCP] Received screenshot request for URL: ${args.url}`);
+        logger.info(`Processing screenshot request for URL: ${args.url}`);
+        logger.debug('Screenshot parameters:', {
+            url: args.url,
+            viewport: { width: args.width, height: args.height },
+            fullPage: args.fullPage,
+            waitUntil: args.waitUntil,
+            waitFor: args.waitFor,
+            directory: args.directory,
+        });
 
+        logger.debug('Calling captureScreenshot...');
         const result = await screenshotModule.captureScreenshot({
             url: args.url,
             viewport: {
@@ -119,11 +153,21 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             waitFor: args.waitFor,
         });
 
+        logger.info('Screenshot captured successfully');
+        logger.debug(
+            'Result type:',
+            'tiles' in result ? 'TiledScreenshot' : 'RegularScreenshot'
+        );
+
         // If directory is specified, save to disk
         if (args.directory) {
+            logger.debug(`Saving screenshots to directory: ${args.directory}`);
+
             // Ensure directory exists
             if (!existsSync(args.directory)) {
+                logger.debug('Creating directory...');
                 await mkdir(args.directory, { recursive: true });
+                logger.info('Directory created successfully');
             }
 
             const savedPaths: string[] = [];
@@ -208,54 +252,112 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             }
         }
     } catch (error: any) {
-        console.error(`[MCP] Error capturing screenshot:`, error);
+        logger.error('Error capturing screenshot:', error.message);
+        logger.debug('Error stack:', error.stack);
+        logger.debug('Error details:', {
+            name: error.name,
+            code: error.code,
+            ...error,
+        });
         throw error;
     }
 });
 
 // Handle resource listing
-server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: RESOURCES,
-}));
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    logger.debug('Received ListResources request');
+    return {
+        resources: RESOURCES,
+    };
+});
 
 // Handle resource reading
-server.setRequestHandler(ReadResourceRequestSchema, async () => {
+server.setRequestHandler(ReadResourceRequestSchema, async request => {
+    logger.debug('Received ReadResource request:', request.params);
     throw new Error(`No resources available`);
 });
 
 // Start the server
 async function runServer() {
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    console.error('screenshot-website-fast MCP server running');
+    try {
+        logger.info('Starting MCP server...');
+        logger.debug('Creating StdioServerTransport...');
 
-    // Handle graceful shutdown
-    const cleanup = async () => {
-        console.error('[MCP] Shutting down gracefully...');
-        if (screenshotModule) {
-            await screenshotModule.closeBrowser();
-        }
-        process.exit(0);
-    };
+        const transport = new StdioServerTransport();
+        logger.debug('Transport created, connecting to server...');
 
-    process.on('SIGINT', cleanup);
-    process.on('SIGTERM', cleanup);
+        await server.connect(transport);
+        logger.info('MCP server connected and running successfully!');
+        logger.info('Ready to receive requests');
+        logger.debug('Server details:', {
+            name: 'screenshot-website-fast',
+            version: '0.1.0',
+            pid: process.pid,
+        });
+
+        // Handle graceful shutdown
+        const cleanup = async (signal: string) => {
+            logger.info(`Received ${signal}, shutting down gracefully...`);
+            try {
+                if (screenshotModule) {
+                    logger.debug('Closing browser instance...');
+                    await screenshotModule.closeBrowser();
+                    logger.info('Browser closed successfully');
+                }
+                logger.info('Shutdown complete');
+                process.exit(0);
+            } catch (error) {
+                logger.error('Error during cleanup:', error);
+                process.exit(1);
+            }
+        };
+
+        process.on('SIGINT', () => cleanup('SIGINT'));
+        process.on('SIGTERM', () => cleanup('SIGTERM'));
+
+        // Log heartbeat every 30 seconds to show server is alive
+        setInterval(() => {
+            logger.debug('Server heartbeat - still running...');
+        }, 30000);
+    } catch (error: any) {
+        logger.error('Failed to start server:', error.message);
+        logger.debug('Startup error details:', error);
+        throw error;
+    }
 }
 
 // Handle unhandled rejections and exceptions
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('[MCP] Unhandled Rejection at:', promise, 'reason:', reason);
+    logger.error('Unhandled Rejection at:', promise);
+    logger.error('Rejection reason:', reason);
+    logger.debug('Full rejection details:', { reason, promise });
     // Exit with error code to trigger restart
     process.exit(1);
 });
 
 process.on('uncaughtException', error => {
-    console.error('[MCP] Uncaught Exception:', error);
+    logger.error('Uncaught Exception:', error.message);
+    logger.error('Stack trace:', error.stack);
+    logger.debug('Full error object:', error);
     // Exit with error code to trigger restart
     process.exit(1);
 });
 
+// Log process events
+process.on('exit', code => {
+    logger.info(`Process exiting with code: ${code}`);
+});
+
+process.on('warning', warning => {
+    logger.warn('Process warning:', warning.message);
+    logger.debug('Warning details:', warning);
+});
+
+// Start the server
+logger.info('Initializing MCP server...');
 runServer().catch(error => {
-    console.error('[MCP] Server error:', error);
+    logger.error('Fatal server error:', error.message);
+    logger.error('Stack trace:', error.stack);
+    logger.debug('Full error:', error);
     process.exit(1);
 });

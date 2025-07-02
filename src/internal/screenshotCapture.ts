@@ -4,13 +4,23 @@ import {
     ScreenshotResult,
     TiledScreenshotResult,
 } from '../types.js';
-import { logger } from '../utils/logger.js';
+import { logger, LogLevel } from '../utils/logger.js';
+
+// Enable debug logging for screenshot module
+logger.setLevel(LogLevel.DEBUG);
+logger.debug('Screenshot module loaded');
 
 let browser: Browser | null = null;
 let browserLaunchPromise: Promise<Browser> | null = null;
 
 async function launchBrowser(): Promise<Browser> {
     logger.info('Launching new browser instance...');
+    logger.debug('Puppeteer executable path:', puppeteer.executablePath());
+    logger.debug('Browser launch options:', {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '...etc'],
+    });
+
     const newBrowser = await puppeteer.launch({
         headless: true,
         args: [
@@ -32,9 +42,15 @@ async function launchBrowser(): Promise<Browser> {
         ignoreDefaultArgs: ['--enable-automation'],
     });
 
+    logger.info('Browser launched successfully');
+    logger.debug('Browser process PID:', newBrowser.process()?.pid);
+
     // Handle browser disconnection
     newBrowser.on('disconnected', () => {
-        logger.info('Browser disconnected');
+        logger.warn('Browser disconnected event received');
+        logger.debug('Browser instance:', {
+            isConnected: newBrowser.isConnected(),
+        });
         if (browser === newBrowser) {
             browser = null;
             browserLaunchPromise = null;
@@ -43,11 +59,14 @@ async function launchBrowser(): Promise<Browser> {
 
     // Start health checking when browser is launched
     startHealthCheck();
+    logger.debug('Health check started');
 
     return newBrowser;
 }
 
 async function getBrowser(forceRestart: boolean = false): Promise<Browser> {
+    logger.debug('getBrowser called', { forceRestart, hasBrowser: !!browser });
+
     // Force restart if requested
     if (forceRestart && browser) {
         logger.info('Force restarting browser...');
@@ -74,11 +93,19 @@ async function getBrowser(forceRestart: boolean = false): Promise<Browser> {
 
     // Launch a new browser
     try {
+        logger.debug('Starting browser launch...');
         browserLaunchPromise = launchBrowser();
         browser = await browserLaunchPromise;
         browserLaunchPromise = null;
+        logger.info('Browser obtained successfully');
         return browser;
-    } catch (error) {
+    } catch (error: any) {
+        logger.error('Failed to launch browser:', error.message);
+        logger.debug('Browser launch error details:', {
+            name: error.name,
+            stack: error.stack,
+            code: error.code,
+        });
         browserLaunchPromise = null;
         browser = null;
         throw error;
@@ -86,11 +113,21 @@ async function getBrowser(forceRestart: boolean = false): Promise<Browser> {
 }
 
 export async function closeBrowser(): Promise<void> {
+    logger.debug('closeBrowser called');
     stopHealthCheck(); // Always stop health check when closing browser
+
     if (browser && browser.isConnected()) {
-        await browser.close();
+        logger.info('Closing browser...');
+        try {
+            await browser.close();
+            logger.info('Browser closed successfully');
+        } catch (error) {
+            logger.error('Error closing browser:', error);
+        }
         browser = null;
         browserLaunchPromise = null;
+    } else {
+        logger.debug('No browser to close or already disconnected');
     }
 }
 
@@ -120,7 +157,9 @@ function stopHealthCheck() {
 }
 
 async function setupPage(browser: Browser): Promise<Page> {
+    logger.debug('Creating new page...');
     const page = await browser.newPage();
+    logger.debug('Page created successfully');
 
     // Configure page settings with longer timeout for problematic sites
     await page.setDefaultNavigationTimeout(60000);
@@ -144,11 +183,12 @@ async function setupPage(browser: Browser): Promise<Page> {
 
     // Set up error handlers
     page.on('error', error => {
-        logger.error('Page crashed:', error);
+        logger.error('Page crashed:', error.message);
+        logger.debug('Page crash details:', error);
     });
 
     page.on('pageerror', error => {
-        logger.warn('Page JavaScript error:', error);
+        logger.warn('Page JavaScript error:', error.message || error);
     });
 
     // Handle frame lifecycle events
@@ -273,8 +313,17 @@ async function navigateWithRetry(
 export async function captureScreenshot(
     options: ScreenshotOptions
 ): Promise<ScreenshotResult | TiledScreenshotResult> {
+    logger.info('captureScreenshot called with options:', {
+        url: options.url,
+        fullPage: options.fullPage,
+        viewport: options.viewport,
+        waitUntil: options.waitUntil,
+        waitFor: options.waitFor,
+    });
+
     // Always capture full page with tiling
     if (options.fullPage !== false) {
+        logger.debug('Delegating to captureTiledScreenshot');
         return captureTiledScreenshot(options);
     }
 
@@ -369,32 +418,35 @@ export async function captureScreenshot(
 
 // Clean up on process exit
 process.on('SIGINT', async () => {
+    logger.debug('SIGINT received in screenshot module');
     stopHealthCheck();
     await closeBrowser();
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
+    logger.debug('SIGTERM received in screenshot module');
     stopHealthCheck();
     await closeBrowser();
     process.exit(0);
 });
 
 process.on('exit', async () => {
+    logger.debug('Process exit in screenshot module');
     stopHealthCheck();
     await closeBrowser();
 });
 
 // Handle uncaught errors
 process.on('uncaughtException', async error => {
-    logger.error('Uncaught exception:', error);
+    logger.error('Uncaught exception in screenshot module:', error);
     stopHealthCheck();
     await closeBrowser();
     process.exit(1);
 });
 
 process.on('unhandledRejection', async error => {
-    logger.error('Unhandled rejection:', error);
+    logger.error('Unhandled rejection in screenshot module:', error);
     stopHealthCheck();
     await closeBrowser();
     process.exit(1);
