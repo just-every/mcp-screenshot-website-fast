@@ -18,7 +18,7 @@ async function main() {
   if (distExists) {
     // Use compiled JavaScript for production (fast startup)
     if (command === 'serve') {
-      const servePath = join(__dirname, '..', 'dist', 'serve.js');
+      const servePath = join(__dirname, '..', 'dist', 'serve-restart.js');
       await import(servePath);
     } else {
       const cliPath = join(__dirname, '..', 'dist', 'index.js');
@@ -30,7 +30,7 @@ async function main() {
       await import('tsx/esm');
       
       if (command === 'serve') {
-        const servePath = join(__dirname, '..', 'src', 'serve.ts');
+        const servePath = join(__dirname, '..', 'src', 'serve-restart.ts');
         await import(servePath);
       } else {
         const cliPath = join(__dirname, '..', 'src', 'index.ts');

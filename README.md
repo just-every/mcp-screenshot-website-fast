@@ -30,11 +30,7 @@ Built specifically for AI vision workflows, this tool captures high-quality scre
 ### Claude Code
 
 ```bash
-# Standard installation
 claude mcp add screenshot-website-fast -s user -- npx -y @just-every/mcp-screenshot-website-fast
-
-# With auto-restart (recommended for reliability)
-claude mcp add screenshot-website-fast -s user -- npx -y @just-every/mcp-screenshot-website-fast-restart
 ```
 
 ### VS Code
@@ -146,24 +142,21 @@ npm run dev capture https://example.com --wait-until networkidle0 --wait-for 200
 - `--wait-for <ms>` - Additional wait time in milliseconds
 - `-o, --output <path>` - Output file path (required for tiled output)
 
-### Running MCP Server with Auto-Restart
+## Auto-Restart Feature
 
-The MCP server now includes automatic restart capability for improved reliability:
+The MCP server includes automatic restart capability by default for improved reliability:
 
-```bash
-# Run with auto-restart (recommended for production)
-npm run serve:restart
-
-# Run without auto-restart (for debugging)
-npm run serve
-```
-
-The auto-restart feature:
 - Automatically restarts the server if it crashes
 - Handles unhandled exceptions and promise rejections
 - Implements exponential backoff (max 10 attempts in 1 minute)
 - Logs all restart attempts for monitoring
 - Gracefully handles shutdown signals (SIGINT, SIGTERM)
+
+For development/debugging without auto-restart:
+```bash
+# Run directly without restart wrapper
+npm run serve:dev
+```
 
 ## Architecture
 
@@ -173,7 +166,8 @@ mcp-screenshot-website-fast/
 │   ├── internal/       # Core screenshot capture logic
 │   ├── utils/          # Logger and utilities
 │   ├── index.ts        # CLI entry point
-│   └── serve.ts        # MCP server entry point
+│   ├── serve.ts        # MCP server entry point
+│   └── serve-restart.ts # Auto-restart wrapper
 ```
 
 ## Development

@@ -4,8 +4,7 @@
   "description": "Fast screenshot capture tool for web pages - optimized for Claude Vision API",
   "main": "dist/index.js",
   "bin": {
-    "mcp-screenshot-website-fast": "bin/mcp-screenshot-website.js",
-    "mcp-screenshot-website-fast-restart": "bin/mcp-screenshot-website-restart.js"
+    "mcp-screenshot-website-fast": "bin/mcp-screenshot-website.js"
   },
   "files": [
     "dist/**/*",
@@ -19,11 +18,9 @@
     "build:dev": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "serve": "LOG_LEVEL=debug tsx src/serve.ts",
+    "serve": "node dist/serve-restart.js",
     "serve:dev": "LOG_LEVEL=debug tsx src/serve.ts",
     "serve:debug": "LOG_LEVEL=debug node --inspect dist/serve.js",
-    "serve:restart": "tsx src/serve-with-restart.ts",
-    "serve:restart:dev": "tsx src/serve-with-restart.ts",
     "test": "vitest",
     "test:deploy": "vitest run test/deployment.test.ts",
     "lint": "eslint src",
