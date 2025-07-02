@@ -71,6 +71,12 @@
     "typescript-eslint": "^8.35.1",
     "vitest": "^3.2.3"
   },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.43.0",
+    "@rollup/rollup-linux-x64-musl": "^4.43.0",
+    "@rollup/rollup-darwin-x64": "^4.43.0",
+    "@rollup/rollup-win32-x64-msvc": "^4.43.0"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
