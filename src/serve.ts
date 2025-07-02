@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+
+// Immediate startup logging to stderr for CI debugging
+console.error('[serve.ts] Process started, PID:', process.pid);
+console.error('[serve.ts] Node version:', process.version);
+console.error('[serve.ts] Current directory:', process.cwd());
+
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {

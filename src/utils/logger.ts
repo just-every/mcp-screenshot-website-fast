@@ -24,6 +24,11 @@ export class Logger {
         // For MCP servers, all logs should go to stderr to avoid
         // interfering with the JSON-RPC communication on stdout
         console.error(prefix, message, ...args);
+
+        // Force flush in non-TTY environments (like CI)
+        if (!process.stderr.isTTY && process.stderr.write) {
+            process.stderr.write('');
+        }
     }
 
     error(message: string, ...args: any[]): void {
