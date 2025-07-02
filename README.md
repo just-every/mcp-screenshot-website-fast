@@ -26,7 +26,11 @@ Built specifically for AI vision workflows, this tool captures high-quality scre
 ### Claude Code
 
 ```bash
+# Standard installation
 claude mcp add screenshot-website-fast -s user -- npx -y @just-every/mcp-screenshot-website-fast
+
+# With auto-restart (recommended for reliability)
+claude mcp add screenshot-website-fast -s user -- npx -y @just-every/mcp-screenshot-website-fast-restart
 ```
 
 ### VS Code
@@ -85,9 +89,28 @@ Once installed in your IDE, the following tools are available:
     - `url` (required): The HTTP/HTTPS URL to capture
     - `width` (optional): Viewport width in pixels (max 1072, default: 1072)
     - `height` (optional): Viewport height in pixels (max 1072, default: 1072)
-    - `fullPage` (optional): Capture full page screenshot (default: true)
-    - `waitUntil` (optional): Wait until event: load, domcontentloaded, networkidle0, networkidle2 (default: networkidle2)
+    - `fullPage` (optional): Capture full page screenshot with tiling (default: true)
+    - `waitUntil` (optional): Wait until event: load, domcontentloaded, networkidle0, networkidle2 (default: domcontentloaded)
     - `waitFor` (optional): Additional wait time in milliseconds
+    - `directory` (optional): Directory to save screenshots - returns file paths instead of base64 images
+
+#### Usage Examples
+
+**Default usage (returns base64 images):**
+```
+screenshot_website_fast(url="https://example.com")
+```
+
+**Save to directory (returns file paths):**
+```
+screenshot_website_fast(url="https://example.com", directory="/path/to/screenshots")
+```
+
+When using the `directory` parameter:
+- Screenshots are saved as PNG files with timestamps
+- File paths are returned instead of base64 data
+- For tiled screenshots, each tile is saved as a separate file
+- Directory is created automatically if it doesn't exist
 
 ## Development Usage
 
@@ -118,6 +141,25 @@ npm run dev capture https://example.com --wait-until networkidle0 --wait-for 200
 - `--wait-until <event>` - Wait until event: load, domcontentloaded, networkidle0, networkidle2
 - `--wait-for <ms>` - Additional wait time in milliseconds
 - `-o, --output <path>` - Output file path (required for tiled output)
+
+### Running MCP Server with Auto-Restart
+
+The MCP server now includes automatic restart capability for improved reliability:
+
+```bash
+# Run with auto-restart (recommended for production)
+npm run serve:restart
+
+# Run without auto-restart (for debugging)
+npm run serve
+```
+
+The auto-restart feature:
+- Automatically restarts the server if it crashes
+- Handles unhandled exceptions and promise rejections
+- Implements exponential backoff (max 10 attempts in 1 minute)
+- Logs all restart attempts for monitoring
+- Gracefully handles shutdown signals (SIGINT, SIGTERM)
 
 ## Architecture
 
