@@ -7,4 +7,11 @@ dist/
 .env.local
 coverage/
 .vscode/
-.idea/# Trigger deployment
+.idea/
+
+# Local test files
+local-tests/
+test-*.js
+test-*.cjs
+test-*.sh
+debug-*.js
