@@ -35,16 +35,17 @@ describe('Deployment Tests', () => {
 
       serverProcess.stderr.on('data', (data) => {
         stderr += data.toString();
-        // Check if server started message appears
-        if (stderr.includes('screenshot-website-fast MCP server running')) {
-          serverProcess.kill();
-          expect(stderr).toContain('screenshot-website-fast MCP server running');
-          resolve();
-        }
       });
 
       serverProcess.stdout.on('data', (data) => {
         stdout += data.toString();
+        // Check if server started message appears (new logging format)
+        // INFO logs go to stdout, not stderr
+        if (stdout.includes('MCP server connected and running successfully!')) {
+          serverProcess.kill();
+          expect(stdout).toContain('MCP server connected and running successfully!');
+          resolve();
+        }
       });
 
       // Timeout fallback
@@ -65,13 +66,19 @@ describe('Deployment Tests', () => {
 
     return new Promise<void>((resolve, reject) => {
       let stderr = '';
+      let stdout = '';
 
       binProcess.stderr.on('data', (data) => {
         stderr += data.toString();
-        // Check if server started message appears
-        if (stderr.includes('screenshot-website-fast MCP server running')) {
+      });
+
+      binProcess.stdout.on('data', (data) => {
+        stdout += data.toString();
+        // Check if server started message appears (new logging format)
+        // INFO logs go to stdout, not stderr
+        if (stdout.includes('MCP server connected and running successfully!')) {
           binProcess.kill();
-          expect(stderr).toContain('screenshot-website-fast MCP server running');
+          expect(stdout).toContain('MCP server connected and running successfully!');
           resolve();
         }
       });
@@ -79,7 +86,7 @@ describe('Deployment Tests', () => {
       // Timeout fallback
       setTimeout(() => {
         binProcess.kill();
-        reject(new Error(`Server did not start via bin. stderr: ${stderr}`));
+        reject(new Error(`Server did not start via bin. stderr: ${stderr}, stdout: ${stdout}`));
       }, 2000);
 
       binProcess.on('error', reject);
