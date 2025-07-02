@@ -47,9 +47,9 @@ logger.info('MCP server instance created successfully');
 
 // Tool definition
 const SCREENSHOT_TOOL: Tool = {
-    name: 'screenshot_website_fast',
+    name: 'take_screenshot',
     description:
-        'Capture high-quality screenshots of web pages optimized for Claude Vision API',
+        'Fast, efficient screenshot capture of web pages - optimized for CLI coding tools. Use this after performing updates to web pages to ensure your changes are displayed correctly. Automatically tiles full pages into 1072x1072 chunks for optimal processing.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -62,14 +62,9 @@ const SCREENSHOT_TOOL: Tool = {
                 description: 'Viewport width in pixels (max 1072)',
                 default: 1072,
             },
-            height: {
-                type: 'number',
-                description: 'Viewport height in pixels (max 1072)',
-                default: 1072,
-            },
             fullPage: {
                 type: 'boolean',
-                description: 'Capture full page screenshot with tiling',
+                description: 'Capture full page screenshot with tiling. If false, only the viewport is captured.',
                 default: true,
             },
             waitUntil: {
@@ -78,17 +73,24 @@ const SCREENSHOT_TOOL: Tool = {
                     'Wait until event: load, domcontentloaded, networkidle0, networkidle2',
                 default: 'domcontentloaded',
             },
-            waitFor: {
+            waitForMS: {
                 type: 'number',
                 description: 'Additional wait time in milliseconds',
             },
             directory: {
                 type: 'string',
                 description:
-                    'Directory to save screenshots (returns file paths instead of base64)',
+                    'Save tiled screenshots to a local directory (returns file paths instead of base64)',
             },
         },
         required: ['url'],
+    },
+    annotations: {
+        title: 'Take Screenshot',
+        readOnlyHint: true, // Screenshots don't modify anything
+        destructiveHint: false,
+        idempotentHint: false, // Each call captures fresh content
+        openWorldHint: true, // Interacts with external websites
     },
 };
 
@@ -123,7 +125,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
     logger.debug('Request params:', JSON.stringify(request.params, null, 2));
 
     try {
-        if (request.params.name !== 'screenshot_website_fast') {
+        if (request.params.name !== 'take_screenshot') {
             const error = `Unknown tool: ${request.params.name}`;
             logger.error(error);
             throw new Error(error);
@@ -140,10 +142,10 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         logger.info(`Processing screenshot request for URL: ${args.url}`);
         logger.debug('Screenshot parameters:', {
             url: args.url,
-            viewport: { width: args.width, height: args.height },
+            viewport: { width: args.width },
             fullPage: args.fullPage,
             waitUntil: args.waitUntil,
-            waitFor: args.waitFor,
+            waitForMS: args.waitForMS,
             directory: args.directory,
         });
 
@@ -152,11 +154,10 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             url: args.url,
             viewport: {
                 width: Math.min(args.width ?? 1072, 1072),
-                height: Math.min(args.height ?? 1072, 1072),
             },
             fullPage: args.fullPage ?? true,
             waitUntil: args.waitUntil ?? 'domcontentloaded',
-            waitFor: args.waitFor,
+            waitFor: args.waitForMS,
         });
 
         logger.info('Screenshot captured successfully');

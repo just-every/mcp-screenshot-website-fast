@@ -1,6 +1,6 @@
 # @just-every/mcp-screenshot-website-fast
 
-Fast, efficient screenshot capture tool for web pages - optimized for Claude Vision API. Automatically tiles full pages into 1072x1072 chunks for optimal AI processing.
+Fast, efficient screenshot capture of web pages - optimized for CLI coding tools. Automatically tiles full pages into 1072x1072 chunks for optimal processing.
 
 <a href="https://glama.ai/mcp/servers/@just-every/mcp-screenshot-website-fast">
   <img width="380" height="200" src="https://glama.ai/mcp/servers/@just-every/mcp-screenshot-website-fast/badge" alt="Screenshot Website Fast MCP server" />
@@ -88,7 +88,7 @@ Once installed in your IDE, the following tools are available:
 
 #### Available Tools
 
-- `screenshot_website_fast` - Captures a high-quality screenshot of a webpage
+- `take_screenshot` - Captures a high-quality screenshot of a webpage
   - Parameters:
     - `url` (required): The HTTP/HTTPS URL to capture
     - `width` (optional): Viewport width in pixels (max 1072, default: 1072)
@@ -102,12 +102,12 @@ Once installed in your IDE, the following tools are available:
 
 **Default usage (returns base64 images):**
 ```
-screenshot_website_fast(url="https://example.com")
+take_screenshot(url="https://example.com")
 ```
 
 **Save to directory (returns file paths):**
 ```
-screenshot_website_fast(url="https://example.com", directory="/path/to/screenshots")
+take_screenshot(url="https://example.com", directory="/path/to/screenshots")
 ```
 
 When using the `directory` parameter:

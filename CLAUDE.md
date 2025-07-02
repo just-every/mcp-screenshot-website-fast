@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A fast, efficient screenshot capture tool optimized for Claude Vision API. It captures high-quality screenshots with automatic resolution limiting (1072x1072) and tiling for optimal AI processing. Provides both CLI and MCP server interfaces.
+Fast, efficient screenshot capture of web pages - optimized for CLI coding tools. Automatically tiles full pages into 1072x1072 chunks for optimal processing.
 
 ## Core Modules & Files
 
