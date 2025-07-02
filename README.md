@@ -2,6 +2,10 @@
 
 Fast, efficient screenshot capture tool for web pages - optimized for Claude Vision API. Automatically tiles full pages into 1072x1072 chunks for optimal AI processing.
 
+<a href="https://glama.ai/mcp/servers/@just-every/mcp-screenshot-website-fast">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@just-every/mcp-screenshot-website-fast/badge" alt="Screenshot Website Fast MCP server" />
+</a>
+
 [![npm version](https://badge.fury.io/js/@just-every%2Fmcp-screenshot-website-fast.svg)](https://www.npmjs.com/package/@just-every/mcp-screenshot-website-fast)
 [![GitHub Actions](https://github.com/just-every/mcp-screenshot-website-fast/workflows/Release/badge.svg)](https://github.com/just-every/mcp-screenshot-website-fast/actions)
 
