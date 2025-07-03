@@ -48,16 +48,64 @@ async function downloadAndExtract(url, platform) {
         const tarPath = join(binDir, 'webp.tar.gz');
         await pipeline(response.body, createWriteStream(tarPath));
         
-        // Extract using tar
+        // Extract the entire tar to find the binary
         const { execa } = await import('execa');
-        await execa('tar', ['-xzf', tarPath, '--strip-components=2', '*/bin/img2webp'], { cwd: binDir });
+        const tempExtractDir = join(binDir, 'temp_extract');
+        await mkdir(tempExtractDir, { recursive: true });
         
-        // Rename to platform-specific name
-        const { rename, unlink, chmod } = await import('fs/promises');
-        const binaryName = platform.startsWith('darwin') ? 'img2webp-darwin' : 'img2webp-linux';
-        await rename(join(binDir, 'img2webp'), join(binDir, binaryName));
-        await chmod(join(binDir, binaryName), '755');
-        await unlink(tarPath);
+        try {
+            // Extract everything to temp directory
+            await execa('tar', ['-xzf', tarPath], { cwd: tempExtractDir });
+            
+            // Find the img2webp binary recursively
+            const { readdir, stat } = await import('fs/promises');
+            
+            async function findBinary(dir) {
+                const items = await readdir(dir);
+                for (const item of items) {
+                    const itemPath = join(dir, item);
+                    const stats = await stat(itemPath);
+                    
+                    if (stats.isDirectory()) {
+                        const found = await findBinary(itemPath);
+                        if (found) return found;
+                    } else if (item === 'img2webp') {
+                        return itemPath;
+                    }
+                }
+                return null;
+            }
+            
+            const binaryPath = await findBinary(tempExtractDir);
+            if (!binaryPath) {
+                throw new Error('img2webp binary not found in archive');
+            }
+            
+            // Copy to final location
+            const { copyFile, unlink, chmod, rm } = await import('fs/promises');
+            let binaryName;
+            if (platform === 'darwin-arm64') {
+                binaryName = 'img2webp-darwin';
+            } else if (platform === 'darwin-x64') {
+                binaryName = 'img2webp-darwin-x64';
+            } else if (platform === 'linux-x64') {
+                binaryName = 'img2webp-linux';
+            } else {
+                binaryName = `img2webp-${platform}`;
+            }
+            const finalPath = join(binDir, binaryName);
+            
+            await copyFile(binaryPath, finalPath);
+            await chmod(finalPath, '755');
+            
+            // Clean up
+            await unlink(tarPath);
+            await rm(tempExtractDir, { recursive: true, force: true });
+        } catch (error) {
+            // Clean up on error
+            await rm(tempExtractDir, { recursive: true, force: true }).catch(() => {});
+            throw error;
+        }
     }
     
     console.log(`✅ Downloaded and extracted img2webp for ${platform}`);
