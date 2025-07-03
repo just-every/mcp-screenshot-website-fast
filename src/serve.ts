@@ -15,7 +15,7 @@ import {
     type Tool,
     type Resource,
 } from '@modelcontextprotocol/sdk/types.js';
-import { writeFile, mkdir, readdir, rmdir } from 'fs/promises';
+import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { logger, LogLevel } from './utils/logger.js';
@@ -192,92 +192,95 @@ function generateFilename(
     return `${prefix}_${hostname}_${timestamp}${suffix}.png`;
 }
 
-// Helper function to create animated WebP from frames (fallback method)
+// Helper function to create animated WebP using img2webp CLI
 async function createAnimatedWebP(
     frames: Buffer[],
     delay: number,
     endDelay?: number
 ): Promise<Buffer> {
-    const { writeFile, unlink } = await import('fs/promises');
-    const { join } = await import('path');
+    const { writeFile, readFile, rm } = await import('fs/promises');
+    const { join, dirname } = await import('path');
     const { tmpdir } = await import('os');
-    const { randomUUID } = await import('crypto');
-    const sharp = await import('sharp');
+    const { randomUUID, createHash } = await import('crypto');
+    const { execa } = await import('execa');
+    const { fileURLToPath } = await import('url');
 
-    // Create a temporary directory for WebP files
+    // Get directory path for ES modules
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+
+    // Select the correct binary based on platform
+    const platform = process.platform;
+    const binaryName =
+        platform === 'darwin' ? 'img2webp-darwin' : 'img2webp-linux';
+    const IMG2WEBP = join(__dirname, 'bin', binaryName);
+
+    // Create a temporary directory
     const tempDir = join(tmpdir(), `webp-${randomUUID()}`);
     await mkdir(tempDir, { recursive: true });
 
     try {
-        // Convert all PNG frames to WebP files with optimized compression for similar frames
-        const webpPaths = [];
-        for (let i = 0; i < frames.length; i++) {
-            const webpPath = join(
-                tempDir,
-                `frame_${i.toString().padStart(3, '0')}.webp`
-            );
-            const webpBuffer = await sharp
-                .default(frames[i])
-                .webp({
-                    quality: 60, // Further reduced quality for faster processing
-                    lossless: false,
-                    effort: 3, // Reduced effort for faster processing
-                    nearLossless: false, // Disable for faster processing
-                    smartSubsample: false, // Disable for faster processing
-                })
-                .toBuffer();
-            await writeFile(webpPath, webpBuffer);
-            webpPaths.push(webpPath);
+        // Collapse duplicate frames to avoid bloat
+        const uniqueFrames: { buf: Buffer; duration: number; hash: string }[] =
+            [];
+        for (const buf of frames) {
+            const hash = createHash('sha1').update(buf).digest('hex');
+            const lastFrame = uniqueFrames[uniqueFrames.length - 1];
+
+            if (lastFrame && hash === lastFrame.hash) {
+                // Extend duration of the last frame if it's a duplicate
+                lastFrame.duration += delay;
+            } else {
+                // Add new unique frame
+                uniqueFrames.push({ buf, duration: delay, hash });
+            }
         }
 
-        // Use node-webpmux to create animated WebP
-        const webpmux = await import('node-webpmux');
-        const { Image } = webpmux.default;
-
-        // Get dimensions from the first frame
-        const firstFrameMetadata = await sharp.default(frames[0]).metadata();
-        const width = firstFrameMetadata.width!;
-        const height = firstFrameMetadata.height!;
-
-        // Create animation from frames
-        const generatedFrames = [];
-        for (let i = 0; i < webpPaths.length; i++) {
-            // Use endDelay for the last frame, regular delay for others
-            const frameDelay =
-                i === webpPaths.length - 1 && endDelay ? endDelay : delay;
-            const frame = await Image.generateFrame({
-                path: webpPaths[i],
-                delay: frameDelay,
-            });
-            generatedFrames.push(frame);
+        // Apply end delay to the last frame if specified
+        if (endDelay && uniqueFrames.length > 0) {
+            uniqueFrames[uniqueFrames.length - 1].duration = endDelay;
         }
 
-        // Save directly as animated WebP with dimensions
-        const webpBuffer = await Image.save(null, {
-            frames: generatedFrames,
-            width: width,
-            height: height,
+        // Write PNG frames to temp directory
+        await Promise.all(
+            uniqueFrames.map((frame, i) =>
+                writeFile(join(tempDir, `f${i}.png`), frame.buf)
+            )
+        );
+
+        // Build CLI arguments
+        const args = [
+            '-min_size', // Minimize size
+            '-mixed', // Use mixed compression
+            '-loop',
+            '0', // Loop infinitely
+            '-q',
+            '60', // Quality 60
+            '-m',
+            '6', // Compression method 6
+        ];
+
+        // Add each frame with its duration
+        uniqueFrames.forEach((frame, i) => {
+            args.push('-d', String(frame.duration), `f${i}.png`);
         });
 
-        // Clean up temp files
-        for (const path of webpPaths) {
-            await unlink(path).catch(() => {});
-        }
-        await rmdir(tempDir).catch(() => {});
+        // Output file
+        args.push('-o', 'out.webp');
 
-        return webpBuffer;
+        // Execute img2webp
+        await execa(IMG2WEBP, args, { cwd: tempDir });
+
+        // Read the result
+        const result = await readFile(join(tempDir, 'out.webp'));
+
+        // Clean up
+        await rm(tempDir, { recursive: true, force: true });
+
+        return result;
     } catch (error) {
         // Clean up on error
-        try {
-            const files = await readdir(tempDir);
-            for (const file of files) {
-                await unlink(join(tempDir, file)).catch(() => {});
-            }
-            await rmdir(tempDir).catch(() => {});
-        } catch {
-            // Ignore cleanup errors
-        }
-
+        await rm(tempDir, { recursive: true, force: true }).catch(() => {});
         throw error;
     }
 }
@@ -520,13 +523,13 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                     let webpBuffer: Buffer | null = null;
 
                     try {
-                        // Create animated WebP using node-webpmux (100ms intervals for ultra-smooth animation)
+                        // Create animated WebP using img2webp (100ms intervals for ultra-smooth animation)
                         webpBuffer = await createAnimatedWebP(
                             frames,
                             100,
                             4000
                         );
-                        logger.info('WebP created using node-webpmux');
+                        logger.info('WebP created using img2webp CLI');
                     } catch (error) {
                         logger.error('Failed to create WebP:', error);
                         webpBuffer = null;
@@ -545,7 +548,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                             content: [
                                 {
                                     type: 'text',
-                                    text: `✅ Screencast saved as animated WebP: ${filepath}\n\nDuration: ${result.duration}s\nFrames: ${result.frames.length}\nCapture Interval: 100ms (4s pause at end)\nMethod: node-webpmux`,
+                                    text: `✅ Screencast saved as animated WebP: ${filepath}\n\nDuration: ${result.duration}s\nFrames: ${result.frames.length}\nCapture Interval: 100ms (4s pause at end)\nMethod: img2webp (optimized with frame deduplication)`,
                                 },
                             ],
                         };
