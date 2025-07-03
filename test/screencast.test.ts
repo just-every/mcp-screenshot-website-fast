@@ -13,8 +13,8 @@ describe('Screencast Capture', () => {
             interval: 2,
         });
 
-        // With 100ms intervals, 2 seconds = 20 frames
-        expect(result.frames).toHaveLength(20);
+        // With 2s intervals, 2 seconds = 1 frame
+        expect(result.frames).toHaveLength(1);
         expect(result.duration).toBe(2);
         expect(result.interval).toBe(2);
         expect(result.viewport.width).toBe(1072);
@@ -37,8 +37,8 @@ describe('Screencast Capture', () => {
             jsEvaluate: `document.title = 'Test Title';`,
         });
 
-        // JavaScript executes at 1s intervals, so with 1 instruction and 2s duration = 20 frames
-        expect(result.frames).toHaveLength(20);
+        // JavaScript executes at 1s intervals, so with 1 instruction and 2s duration = 1 frame
+        expect(result.frames).toHaveLength(1);
         // JavaScript was executed (we can't verify the result directly but no error means success)
     }, 10000);
 
@@ -55,6 +55,6 @@ describe('Screencast Capture', () => {
 
         expect(result.viewport.width).toBe(800);
         expect(result.viewport.height).toBe(600);
-        expect(result.frames).toHaveLength(20); // 2 seconds at 100ms intervals
+        expect(result.frames).toHaveLength(1); // 2 seconds at 2s intervals
     }, 10000);
 });

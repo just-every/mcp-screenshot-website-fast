@@ -98,7 +98,7 @@ const SCREENSHOT_TOOL: Tool = {
 const SCREENCAST_TOOL: Tool = {
     name: 'take_screencast',
     description:
-        'Capture a series of screenshots of a web page over time, producing a screencast. Captures screenshots at 100ms intervals for smooth animation. PNG format: individual frames. WebP format: animated WebP with 4-second pause at end for looping.',
+        'Capture a series of screenshots of a web page over time, producing a screencast. Captures screenshots at 2-second intervals. PNG format: individual frames. WebP format: animated WebP with 4-second pause at end for looping.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -292,9 +292,9 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
     try {
         if (request.params.name === 'take_screenshot') {
-            // Lazy load the module on first use
+            // Lazy load the module on first use (may already be loaded from warmup)
             if (!screenshotModule) {
-                logger.debug('Lazy loading screenshot module...');
+                logger.debug('Loading screenshot module...');
                 screenshotModule = await import(
                     './internal/screenshotCapture.js'
                 );
@@ -425,9 +425,9 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                 }
             }
         } else if (request.params.name === 'take_screencast') {
-            // Lazy load the module on first use
+            // Lazy load the module on first use (may already be loaded from warmup)
             if (!screenshotModule) {
-                logger.debug('Lazy loading screenshot module...');
+                logger.debug('Loading screenshot module...');
                 screenshotModule = await import(
                     './internal/screenshotCapture.js'
                 );
@@ -437,11 +437,18 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             const args = request.params.arguments as any;
             logger.info(`Processing screencast request for URL: ${args.url}`);
 
+            // Validate format parameter usage
+            if (args.format && !args.directory) {
+                throw new Error(
+                    'The "format" parameter can only be used when "directory" parameter is specified'
+                );
+            }
+
             const duration = args.duration ?? 10;
             const format = args.format ?? 'webp';
             const height = Math.min(args.height ?? 1072, 1072); // Cap at 1072
-            // WebP captures every 1 second, PNG captures every 2 seconds
-            const interval = args.directory && format === 'webp' ? 1 : 2;
+            // Use 100ms intervals for WebP directory saves, 2s intervals for normal screencasts
+            const interval = args.directory && format === 'webp' ? 0.1 : 2;
 
             logger.debug('Screencast parameters:', {
                 url: args.url,
@@ -645,6 +652,22 @@ async function runServer() {
 
         await server.connect(transport);
         logger.info('MCP server connected and running successfully!');
+
+        // Pre-warm browser for faster first requests (in background)
+        setImmediate(async () => {
+            try {
+                if (!screenshotModule) {
+                    logger.debug('Loading screenshot module for warmup...');
+                    screenshotModule = await import(
+                        './internal/screenshotCapture.js'
+                    );
+                }
+                await screenshotModule.warmupBrowser();
+            } catch (error) {
+                logger.warn('Browser warmup failed during startup:', error);
+            }
+        });
+
         logger.info('Ready to receive requests');
         logger.debug('Server details:', {
             name: 'screenshot-website-fast',

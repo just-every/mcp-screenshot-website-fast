@@ -20,7 +20,6 @@ let inactivityTimer: NodeJS.Timeout | null = null;
 // Configuration
 const BROWSER_IDLE_TIMEOUT_MS = 60000; // Close browser after 1 minute of inactivity
 const MIN_BROWSER_LIFETIME_MS = 5000; // Keep browser alive for at least 5 seconds
-const SCREENSHOT_INTERVAL_MS = 100; // Screenshot interval for smooth animations (tweakable)
 
 // Browser lifecycle management
 function updateActivityTime() {
@@ -515,6 +514,30 @@ export function getBrowserStats() {
     };
 }
 
+export async function warmupBrowser(): Promise<void> {
+    logger.info('Warming up browser for faster first requests...');
+    try {
+        // Pre-launch browser to avoid startup delay on first request
+        const warmupBrowser = await getBrowser();
+        logger.info('Browser warmed up successfully');
+
+        // Optionally create a page and navigate to a simple page to fully warm up
+        const page = await warmupBrowser.newPage();
+        await page.goto('data:text/html,<html><body>Warmup</body></html>', {
+            waitUntil: 'load',
+            timeout: 5000,
+        });
+        await page.close();
+        logger.debug('Browser warmup page test completed');
+    } catch (error) {
+        logger.warn(
+            'Browser warmup failed (first request may be slower):',
+            error
+        );
+        // Don't throw - let the server start anyway
+    }
+}
+
 // Clean up on process exit
 process.on('SIGINT', async () => {
     logger.debug('SIGINT received in screenshot module');
@@ -762,9 +785,9 @@ export async function captureScreencast(
             );
         }
 
-        // Handle JavaScript execution with high-frequency screenshots
+        // Handle JavaScript execution with configurable screenshot intervals
         let jsInstructionCount = 0;
-        const screenshotInterval = SCREENSHOT_INTERVAL_MS; // Configurable screenshot interval
+        const screenshotInterval = options.interval * 1000; // Convert seconds to milliseconds
         const jsExecutionInterval = 1000; // Execute JS instructions every 1 second
 
         if (options.jsEvaluate) {
@@ -774,7 +797,7 @@ export async function captureScreencast(
 
             jsInstructionCount = jsInstructions.length;
             logger.info(
-                `Processing ${jsInstructionCount} JavaScript instruction(s) with ${SCREENSHOT_INTERVAL_MS}ms screenshot intervals`
+                `Processing ${jsInstructionCount} JavaScript instruction(s) with ${screenshotInterval}ms screenshot intervals`
             );
 
             const startTime = Date.now();
@@ -845,15 +868,14 @@ export async function captureScreencast(
 
         // Calculate remaining time and frames needed at configured intervals
         const remainingDuration =
-            options.duration * 1000 -
-            jsInstructionCount * SCREENSHOT_INTERVAL_MS; // Remaining time in ms
+            options.duration * 1000 - jsInstructionCount * screenshotInterval; // Remaining time in ms
         const remainingFrames = Math.max(
             0,
-            Math.floor(remainingDuration / SCREENSHOT_INTERVAL_MS)
+            Math.floor(remainingDuration / screenshotInterval)
         );
 
         logger.info(
-            `Captured ${jsInstructionCount} frames during JS execution. Capturing ${remainingFrames} additional frames at ${SCREENSHOT_INTERVAL_MS}ms intervals for remaining ${remainingDuration}ms`
+            `Captured ${jsInstructionCount} frames during JS execution. Capturing ${remainingFrames} additional frames at ${screenshotInterval}ms intervals for remaining ${remainingDuration}ms`
         );
 
         // Capture remaining frames at configured intervals
@@ -881,7 +903,7 @@ export async function captureScreencast(
             // Wait for next interval (if not the last frame)
             if (i < remainingFrames - 1) {
                 const elapsed = Date.now() - frameStart;
-                const waitTime = Math.max(0, SCREENSHOT_INTERVAL_MS - elapsed);
+                const waitTime = Math.max(0, screenshotInterval - elapsed);
                 if (waitTime > 0) {
                     await new Promise(resolve => setTimeout(resolve, waitTime));
                 }
