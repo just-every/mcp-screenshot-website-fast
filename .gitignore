@@ -15,3 +15,7 @@ test-*.js
 test-*.cjs
 test-*.sh
 debug-*.js
+
+# Downloaded binaries (these are downloaded during build)
+src/bin/
+dist/bin/img2webp-*

@@ -9,13 +9,17 @@
   "files": [
     "dist/**/*",
     "bin/**/*",
+    "scripts/**/*",
     "README.md",
     "LICENSE",
     "package.json"
   ],
   "scripts": {
+    "prebuild": "node scripts/download-img2webp.js",
     "build": "tsc -p tsconfig.prod.json",
     "build:dev": "tsc",
+    "build:full": "npm run download-binaries && npm run build",
+    "download-binaries": "node scripts/download-img2webp.js",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "serve": "node dist/serve-restart.js",

@@ -38,6 +38,9 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
+    - name: Download WebP binaries
+      run: node scripts/download-img2webp.js linux-x64 darwin-arm64 darwin-x64
+      
     - name: Build project
       run: npm run build
       
