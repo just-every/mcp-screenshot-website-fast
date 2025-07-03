@@ -3,6 +3,8 @@ import {
     ScreenshotOptions,
     ScreenshotResult,
     TiledScreenshotResult,
+    ScreencastOptions,
+    ScreencastResult,
 } from '../types.js';
 import { logger, LogLevel } from '../utils/logger.js';
 
@@ -12,6 +14,55 @@ logger.debug('Screenshot module loaded');
 
 let browser: Browser | null = null;
 let browserLaunchPromise: Promise<Browser> | null = null;
+let lastActivityTime: number = Date.now();
+let inactivityTimer: NodeJS.Timeout | null = null;
+
+// Configuration
+const BROWSER_IDLE_TIMEOUT_MS = 60000; // Close browser after 1 minute of inactivity
+const MIN_BROWSER_LIFETIME_MS = 5000; // Keep browser alive for at least 5 seconds
+const SCREENSHOT_INTERVAL_MS = 100; // Screenshot interval for smooth animations (tweakable)
+
+// Browser lifecycle management
+function updateActivityTime() {
+    lastActivityTime = Date.now();
+    resetInactivityTimer();
+}
+
+function resetInactivityTimer() {
+    // Clear existing timer
+    if (inactivityTimer) {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = null;
+    }
+
+    // Don't set a new timer if browser is not running
+    if (!browser || !browser.isConnected()) {
+        return;
+    }
+
+    // Set new timer
+    inactivityTimer = setTimeout(async () => {
+        const timeSinceLastActivity = Date.now() - lastActivityTime;
+        const browserAge = Date.now() - lastActivityTime;
+
+        // Only close if browser has been idle long enough and alive long enough
+        if (
+            timeSinceLastActivity >= BROWSER_IDLE_TIMEOUT_MS &&
+            browserAge >= MIN_BROWSER_LIFETIME_MS
+        ) {
+            logger.info(
+                `Browser idle for ${timeSinceLastActivity}ms, closing to save resources...`
+            );
+            await closeBrowser();
+        } else {
+            // If not ready to close yet, reset the timer
+            resetInactivityTimer();
+        }
+    }, BROWSER_IDLE_TIMEOUT_MS);
+
+    // Allow process to exit if this is the only thing keeping it alive
+    inactivityTimer.unref();
+}
 
 async function launchBrowser(): Promise<Browser> {
     logger.info('Launching new browser instance...');
@@ -60,6 +111,10 @@ async function launchBrowser(): Promise<Browser> {
     // Start health checking when browser is launched
     startHealthCheck();
     logger.debug('Health check started');
+
+    // Initialize activity tracking
+    updateActivityTime();
+    logger.debug('Activity tracking initialized');
 
     return newBrowser;
 }
@@ -116,6 +171,12 @@ export async function closeBrowser(): Promise<void> {
     logger.debug('closeBrowser called');
     stopHealthCheck(); // Always stop health check when closing browser
 
+    // Clear inactivity timer
+    if (inactivityTimer) {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = null;
+    }
+
     if (browser && browser.isConnected()) {
         logger.info('Closing browser...');
         try {
@@ -142,6 +203,24 @@ function startHealthCheck() {
             logger.warn('Browser health check failed - browser disconnected');
             browser = null;
             browserLaunchPromise = null;
+        } else if (browser && browser.isConnected()) {
+            try {
+                // Check memory usage
+                const pages = await browser.pages();
+                logger.debug(`Health check: ${pages.length} pages open`);
+
+                // Close any extra pages (keep only the initial blank page)
+                if (pages.length > 1) {
+                    logger.info(
+                        `Closing ${pages.length - 1} unused pages to free memory`
+                    );
+                    for (let i = 1; i < pages.length; i++) {
+                        await pages[i].close().catch(() => {});
+                    }
+                }
+            } catch (error) {
+                logger.error('Error during health check:', error);
+            }
         }
     }, 30000); // Check every 30 seconds
 
@@ -321,6 +400,9 @@ export async function captureScreenshot(
         waitFor: options.waitFor,
     });
 
+    // Update activity time when screenshot is requested
+    updateActivityTime();
+
     // Always capture full page with tiling
     if (options.fullPage !== false) {
         logger.debug('Delegating to captureTiledScreenshot');
@@ -390,6 +472,11 @@ export async function captureScreenshot(
                 format: 'png',
             };
 
+            // Clean up the page after successful capture
+            if (page && !page.isClosed()) {
+                await page.close().catch(() => {});
+            }
+
             return result;
         } catch (error: any) {
             logger.error(
@@ -414,6 +501,18 @@ export async function captureScreenshot(
     }
 
     throw new Error('Failed to capture screenshot after all attempts');
+}
+
+// Export browser statistics for monitoring
+export function getBrowserStats() {
+    return {
+        hasBrowser: !!browser,
+        isConnected: browser?.isConnected() || false,
+        lastActivityTime: new Date(lastActivityTime).toISOString(),
+        timeSinceLastActivity: Date.now() - lastActivityTime,
+        hasInactivityTimer: !!inactivityTimer,
+        idleTimeoutMs: BROWSER_IDLE_TIMEOUT_MS,
+    };
 }
 
 // Clean up on process exit
@@ -611,4 +710,213 @@ async function captureTiledScreenshot(
     }
 
     throw new Error('Failed to capture tiled screenshot after all attempts');
+}
+
+export async function captureScreencast(
+    options: ScreencastOptions
+): Promise<ScreencastResult> {
+    logger.info('captureScreencast called with options:', {
+        url: options.url,
+        duration: options.duration,
+        interval: options.interval,
+        viewport: options.viewport,
+        waitUntil: options.waitUntil,
+        waitFor: options.waitFor,
+        hasJsEvaluate: !!options.jsEvaluate,
+    });
+
+    // Update activity time when screencast is requested
+    updateActivityTime();
+
+    const frames: ScreencastResult['frames'] = [];
+    const startTime = new Date();
+
+    let browser: Browser | null = null;
+    let page: Page | null = null;
+
+    try {
+        // Get browser instance
+        browser = await getBrowser();
+        page = await setupPage(browser);
+
+        // Set viewport (only capture top tile - 1072x1072)
+        const viewport = {
+            width: options.viewport?.width || 1072,
+            height: options.viewport?.height || 1072,
+        };
+        await page.setViewport(viewport);
+
+        logger.info(`Starting screencast of ${options.url}`);
+
+        // Navigate to the page
+        await page.goto(options.url, {
+            waitUntil: options.waitUntil || 'domcontentloaded',
+            timeout: 60000,
+        });
+
+        // Wait additional time if specified
+        if (options.waitFor) {
+            await page.evaluate(
+                ms => new Promise(resolve => setTimeout(resolve, ms)),
+                options.waitFor
+            );
+        }
+
+        // Handle JavaScript execution with high-frequency screenshots
+        let jsInstructionCount = 0;
+        const screenshotInterval = SCREENSHOT_INTERVAL_MS; // Configurable screenshot interval
+        const jsExecutionInterval = 1000; // Execute JS instructions every 1 second
+
+        if (options.jsEvaluate) {
+            const jsInstructions = Array.isArray(options.jsEvaluate)
+                ? options.jsEvaluate
+                : [options.jsEvaluate];
+
+            jsInstructionCount = jsInstructions.length;
+            logger.info(
+                `Processing ${jsInstructionCount} JavaScript instruction(s) with ${SCREENSHOT_INTERVAL_MS}ms screenshot intervals`
+            );
+
+            const startTime = Date.now();
+            let nextJsIndex = 0;
+            let frameIndex = 0;
+
+            // Run for the duration needed to execute all JS instructions
+            const jsDuration = jsInstructions.length * jsExecutionInterval;
+
+            while (Date.now() - startTime < jsDuration) {
+                const elapsed = Date.now() - startTime;
+
+                // Check if it's time to execute the next JS instruction
+                if (
+                    nextJsIndex < jsInstructions.length &&
+                    elapsed >= nextJsIndex * jsExecutionInterval
+                ) {
+                    logger.info(
+                        `Executing JavaScript instruction ${nextJsIndex + 1}/${jsInstructions.length}: ${jsInstructions[nextJsIndex].substring(0, 50)}...`
+                    );
+                    try {
+                        await page.evaluate(jsInstructions[nextJsIndex]);
+                        logger.debug(
+                            `JavaScript instruction ${nextJsIndex + 1} completed`
+                        );
+                    } catch (error) {
+                        logger.error(
+                            `JavaScript instruction ${nextJsIndex + 1} failed:`,
+                            error
+                        );
+                        throw new Error(
+                            `Failed to execute JavaScript instruction ${nextJsIndex + 1}: ${error}`
+                        );
+                    }
+                    nextJsIndex++;
+                }
+
+                // Take screenshot
+                const screenshot = (await page.screenshot({
+                    type: 'png',
+                    fullPage: false,
+                    encoding: 'binary',
+                })) as Buffer;
+
+                frames.push({
+                    screenshot,
+                    timestamp: new Date(),
+                    index: frameIndex,
+                });
+
+                frameIndex++;
+                logger.debug(
+                    `Captured high-frequency frame ${frameIndex} at ${elapsed}ms`
+                );
+
+                // Wait for next screenshot interval
+                const nextScreenshotTime =
+                    startTime + frameIndex * screenshotInterval;
+                const waitTime = Math.max(0, nextScreenshotTime - Date.now());
+                if (waitTime > 0) {
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
+            }
+
+            // Update jsInstructionCount to reflect actual frames captured during JS execution
+            jsInstructionCount = frameIndex;
+        }
+
+        // Calculate remaining time and frames needed at configured intervals
+        const remainingDuration =
+            options.duration * 1000 -
+            jsInstructionCount * SCREENSHOT_INTERVAL_MS; // Remaining time in ms
+        const remainingFrames = Math.max(
+            0,
+            Math.floor(remainingDuration / SCREENSHOT_INTERVAL_MS)
+        );
+
+        logger.info(
+            `Captured ${jsInstructionCount} frames during JS execution. Capturing ${remainingFrames} additional frames at ${SCREENSHOT_INTERVAL_MS}ms intervals for remaining ${remainingDuration}ms`
+        );
+
+        // Capture remaining frames at configured intervals
+        for (let i = 0; i < remainingFrames; i++) {
+            const frameStart = Date.now();
+
+            // Take screenshot of viewport (top tile only)
+            const screenshot = (await page.screenshot({
+                type: 'png',
+                fullPage: false,
+                encoding: 'binary',
+            })) as Buffer;
+
+            const frameIndex = jsInstructionCount + i;
+            frames.push({
+                screenshot,
+                timestamp: new Date(),
+                index: frameIndex,
+            });
+
+            logger.debug(
+                `Captured duration frame ${frameIndex + 1} (${i + 1}/${remainingFrames})`
+            );
+
+            // Wait for next interval (if not the last frame)
+            if (i < remainingFrames - 1) {
+                const elapsed = Date.now() - frameStart;
+                const waitTime = Math.max(0, SCREENSHOT_INTERVAL_MS - elapsed);
+                if (waitTime > 0) {
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
+            }
+        }
+
+        const endTime = new Date();
+
+        const result: ScreencastResult = {
+            url: options.url,
+            frames,
+            startTime,
+            endTime,
+            duration: options.duration,
+            interval: options.interval,
+            viewport,
+            format: 'png',
+        };
+
+        logger.info(`Screencast completed: ${frames.length} frames captured`);
+
+        // Clean up the page after successful capture
+        if (page && !page.isClosed()) {
+            await page.close().catch(() => {});
+        }
+
+        return result;
+    } catch (error: any) {
+        logger.error('Error capturing screencast:', error);
+
+        // Clean up the page
+        if (page && !page.isClosed()) {
+            await page.close().catch(() => {});
+        }
+
+        throw error;
+    }
 }

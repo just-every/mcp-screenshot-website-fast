@@ -15,7 +15,7 @@ import {
     type Tool,
     type Resource,
 } from '@modelcontextprotocol/sdk/types.js';
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile, mkdir, readdir, rmdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { logger, LogLevel } from './utils/logger.js';
@@ -45,7 +45,7 @@ const server = new Server(
 );
 logger.info('MCP server instance created successfully');
 
-// Tool definition
+// Tool definitions
 const SCREENSHOT_TOOL: Tool = {
     name: 'take_screenshot',
     description:
@@ -64,7 +64,8 @@ const SCREENSHOT_TOOL: Tool = {
             },
             fullPage: {
                 type: 'boolean',
-                description: 'Capture full page screenshot with tiling. If false, only the viewport is captured.',
+                description:
+                    'Capture full page screenshot with tiling. If false, only the viewport is captured.',
                 default: true,
             },
             waitUntil: {
@@ -94,6 +95,74 @@ const SCREENSHOT_TOOL: Tool = {
     },
 };
 
+const SCREENCAST_TOOL: Tool = {
+    name: 'take_screencast',
+    description:
+        'Capture a series of screenshots of a web page over time, producing a screencast. Captures screenshots at 100ms intervals for smooth animation. PNG format: individual frames. WebP format: animated WebP with 4-second pause at end for looping.',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            url: {
+                type: 'string',
+                description: 'HTTP/HTTPS URL to capture',
+            },
+            duration: {
+                type: 'number',
+                description: 'Total duration of screencast in seconds',
+                default: 10,
+            },
+            height: {
+                type: 'number',
+                description: 'Viewport height in pixels (max 1072)',
+                default: 1072,
+            },
+            jsEvaluate: {
+                oneOf: [
+                    {
+                        type: 'string',
+                        description:
+                            'Single JavaScript code to execute after the first screenshot',
+                    },
+                    {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description:
+                            'Array of JavaScript instructions - screenshot taken before each one',
+                    },
+                ],
+                description:
+                    'JavaScript code to execute. String: single instruction after first screenshot. Array: takes screenshot before each instruction, then continues capturing until duration ends.',
+            },
+            waitUntil: {
+                type: 'string',
+                description:
+                    'Wait until event: load, domcontentloaded, networkidle0, networkidle2',
+                default: 'domcontentloaded',
+            },
+            directory: {
+                type: 'string',
+                description:
+                    'Save screencast to directory. Specify format with "format" parameter.',
+            },
+            format: {
+                type: 'string',
+                description:
+                    'Output format when using directory: "png" for individual PNG files, "webp" for animated WebP (default)',
+                enum: ['png', 'webp'],
+                default: 'webp',
+            },
+        },
+        required: ['url'],
+    },
+    annotations: {
+        title: 'Take Screencast',
+        readOnlyHint: true, // Screencasts don't modify anything
+        destructiveHint: false,
+        idempotentHint: false, // Each call captures fresh content
+        openWorldHint: true, // Interacts with external websites
+    },
+};
+
 // Resources definitions
 const RESOURCES: Resource[] = [];
 
@@ -101,7 +170,7 @@ const RESOURCES: Resource[] = [];
 server.setRequestHandler(ListToolsRequestSchema, async () => {
     logger.debug('Received ListTools request');
     const response = {
-        tools: [SCREENSHOT_TOOL],
+        tools: [SCREENSHOT_TOOL, SCREENCAST_TOOL],
     };
     logger.debug(
         'Returning tools:',
@@ -111,12 +180,106 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 // Helper function to generate unique filename
-function generateFilename(url: string, index?: number): string {
+function generateFilename(
+    url: string,
+    index?: number,
+    prefix: string = 'screenshot'
+): string {
     const urlObj = new URL(url);
     const hostname = urlObj.hostname.replace(/[^a-z0-9]/gi, '_');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const suffix = index !== undefined ? `_tile${index + 1}` : '';
-    return `screenshot_${hostname}_${timestamp}${suffix}.png`;
+    const suffix = index !== undefined ? `_frame${index + 1}` : '';
+    return `${prefix}_${hostname}_${timestamp}${suffix}.png`;
+}
+
+// Helper function to create animated WebP from frames (fallback method)
+async function createAnimatedWebP(
+    frames: Buffer[],
+    delay: number,
+    endDelay?: number
+): Promise<Buffer> {
+    const { writeFile, unlink } = await import('fs/promises');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { randomUUID } = await import('crypto');
+    const sharp = await import('sharp');
+
+    // Create a temporary directory for WebP files
+    const tempDir = join(tmpdir(), `webp-${randomUUID()}`);
+    await mkdir(tempDir, { recursive: true });
+
+    try {
+        // Convert all PNG frames to WebP files with optimized compression for similar frames
+        const webpPaths = [];
+        for (let i = 0; i < frames.length; i++) {
+            const webpPath = join(
+                tempDir,
+                `frame_${i.toString().padStart(3, '0')}.webp`
+            );
+            const webpBuffer = await sharp
+                .default(frames[i])
+                .webp({
+                    quality: 60, // Further reduced quality for faster processing
+                    lossless: false,
+                    effort: 3, // Reduced effort for faster processing
+                    nearLossless: false, // Disable for faster processing
+                    smartSubsample: false, // Disable for faster processing
+                })
+                .toBuffer();
+            await writeFile(webpPath, webpBuffer);
+            webpPaths.push(webpPath);
+        }
+
+        // Use node-webpmux to create animated WebP
+        const webpmux = await import('node-webpmux');
+        const { Image } = webpmux.default;
+
+        // Get dimensions from the first frame
+        const firstFrameMetadata = await sharp.default(frames[0]).metadata();
+        const width = firstFrameMetadata.width!;
+        const height = firstFrameMetadata.height!;
+
+        // Create animation from frames
+        const generatedFrames = [];
+        for (let i = 0; i < webpPaths.length; i++) {
+            // Use endDelay for the last frame, regular delay for others
+            const frameDelay =
+                i === webpPaths.length - 1 && endDelay ? endDelay : delay;
+            const frame = await Image.generateFrame({
+                path: webpPaths[i],
+                delay: frameDelay,
+            });
+            generatedFrames.push(frame);
+        }
+
+        // Save directly as animated WebP with dimensions
+        const webpBuffer = await Image.save(null, {
+            frames: generatedFrames,
+            width: width,
+            height: height,
+        });
+
+        // Clean up temp files
+        for (const path of webpPaths) {
+            await unlink(path).catch(() => {});
+        }
+        await rmdir(tempDir).catch(() => {});
+
+        return webpBuffer;
+    } catch (error) {
+        // Clean up on error
+        try {
+            const files = await readdir(tempDir);
+            for (const file of files) {
+                await unlink(join(tempDir, file)).catch(() => {});
+            }
+            await rmdir(tempDir).catch(() => {});
+        } catch {
+            // Ignore cleanup errors
+        }
+
+        throw error;
+    }
 }
 
 // Handle tool execution
@@ -125,109 +288,306 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
     logger.debug('Request params:', JSON.stringify(request.params, null, 2));
 
     try {
-        if (request.params.name !== 'take_screenshot') {
-            const error = `Unknown tool: ${request.params.name}`;
-            logger.error(error);
-            throw new Error(error);
-        }
-
-        // Lazy load the module on first use
-        if (!screenshotModule) {
-            logger.debug('Lazy loading screenshot module...');
-            screenshotModule = await import('./internal/screenshotCapture.js');
-            logger.info('Screenshot module loaded successfully');
-        }
-
-        const args = request.params.arguments as any;
-        logger.info(`Processing screenshot request for URL: ${args.url}`);
-        logger.debug('Screenshot parameters:', {
-            url: args.url,
-            viewport: { width: args.width },
-            fullPage: args.fullPage,
-            waitUntil: args.waitUntil,
-            waitForMS: args.waitForMS,
-            directory: args.directory,
-        });
-
-        logger.debug('Calling captureScreenshot...');
-        const result = await screenshotModule.captureScreenshot({
-            url: args.url,
-            viewport: {
-                width: Math.min(args.width ?? 1072, 1072),
-            },
-            fullPage: args.fullPage ?? true,
-            waitUntil: args.waitUntil ?? 'domcontentloaded',
-            waitFor: args.waitForMS,
-        });
-
-        logger.info('Screenshot captured successfully');
-        logger.debug(
-            'Result type:',
-            'tiles' in result ? 'TiledScreenshot' : 'RegularScreenshot'
-        );
-
-        // If directory is specified, save to disk
-        if (args.directory) {
-            logger.debug(`Saving screenshots to directory: ${args.directory}`);
-
-            // Ensure directory exists
-            if (!existsSync(args.directory)) {
-                logger.debug('Creating directory...');
-                await mkdir(args.directory, { recursive: true });
-                logger.info('Directory created successfully');
+        if (request.params.name === 'take_screenshot') {
+            // Lazy load the module on first use
+            if (!screenshotModule) {
+                logger.debug('Lazy loading screenshot module...');
+                screenshotModule = await import(
+                    './internal/screenshotCapture.js'
+                );
+                logger.info('Screenshot module loaded successfully');
             }
 
-            const savedPaths: string[] = [];
+            const args = request.params.arguments as any;
+            logger.info(`Processing screenshot request for URL: ${args.url}`);
+            logger.debug('Screenshot parameters:', {
+                url: args.url,
+                viewport: { width: args.width },
+                fullPage: args.fullPage,
+                waitUntil: args.waitUntil,
+                waitForMS: args.waitForMS,
+                directory: args.directory,
+            });
 
-            if ('tiles' in result) {
-                // Handle tiled screenshot result
-                const tiledResult = result as any; // TiledScreenshotResult
+            logger.debug('Calling captureScreenshot...');
+            const result = await screenshotModule.captureScreenshot({
+                url: args.url,
+                viewport: {
+                    width: Math.min(args.width ?? 1072, 1072),
+                },
+                fullPage: args.fullPage ?? true,
+                waitUntil: args.waitUntil ?? 'domcontentloaded',
+                waitFor: args.waitForMS,
+            });
 
-                // Save each tile
-                for (let i = 0; i < tiledResult.tiles.length; i++) {
-                    const tile = tiledResult.tiles[i];
-                    const filename = generateFilename(args.url, i);
-                    const filepath = join(args.directory, filename);
-                    await writeFile(filepath, tile.screenshot);
-                    savedPaths.push(filepath);
+            logger.info('Screenshot captured successfully');
+            logger.debug(
+                'Result type:',
+                'tiles' in result ? 'TiledScreenshot' : 'RegularScreenshot'
+            );
+
+            // If directory is specified, save to disk
+            if (args.directory) {
+                logger.debug(
+                    `Saving screenshots to directory: ${args.directory}`
+                );
+
+                // Ensure directory exists
+                if (!existsSync(args.directory)) {
+                    logger.debug('Creating directory...');
+                    await mkdir(args.directory, { recursive: true });
+                    logger.info('Directory created successfully');
                 }
 
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: `✅ Saved ${tiledResult.tiles.length} screenshot tiles to:\n${savedPaths.join('\n')}\n\nPage size: ${tiledResult.fullWidth}x${tiledResult.fullHeight} pixels\nTile size: ${tiledResult.tileSize}x${tiledResult.tileSize} pixels`,
-                        },
-                    ],
-                };
-            } else {
-                // Handle regular screenshot
-                const filename = generateFilename(args.url);
-                const filepath = join(args.directory, filename);
-                await writeFile(filepath, result.screenshot);
-                savedPaths.push(filepath);
+                const savedPaths: string[] = [];
 
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: `✅ Screenshot saved to: ${filepath}\n\nDimensions: ${result.viewport.width}x${result.viewport.height} pixels`,
-                        },
-                    ],
-                };
+                if ('tiles' in result) {
+                    // Handle tiled screenshot result
+                    const tiledResult = result as any; // TiledScreenshotResult
+
+                    // Save each tile
+                    for (let i = 0; i < tiledResult.tiles.length; i++) {
+                        const tile = tiledResult.tiles[i];
+                        const filename = generateFilename(args.url, i);
+                        const filepath = join(args.directory, filename);
+                        await writeFile(filepath, tile.screenshot);
+                        savedPaths.push(filepath);
+                    }
+
+                    return {
+                        content: [
+                            {
+                                type: 'text',
+                                text: `✅ Saved ${tiledResult.tiles.length} screenshot tiles to:\n${savedPaths.join('\n')}\n\nPage size: ${tiledResult.fullWidth}x${tiledResult.fullHeight} pixels\nTile size: ${tiledResult.tileSize}x${tiledResult.tileSize} pixels`,
+                            },
+                        ],
+                    };
+                } else {
+                    // Handle regular screenshot
+                    const filename = generateFilename(args.url);
+                    const filepath = join(args.directory, filename);
+                    await writeFile(filepath, result.screenshot);
+                    savedPaths.push(filepath);
+
+                    return {
+                        content: [
+                            {
+                                type: 'text',
+                                text: `✅ Screenshot saved to: ${filepath}\n\nDimensions: ${result.viewport.width}x${result.viewport.height} pixels`,
+                            },
+                        ],
+                    };
+                }
+            } else {
+                // Return base64 encoded images as before
+                if ('tiles' in result) {
+                    // Handle tiled screenshot result
+                    const tiledResult = result as any; // TiledScreenshotResult
+                    const content = [];
+
+                    // Add each tile as an image
+                    for (const tile of tiledResult.tiles) {
+                        content.push({
+                            type: 'image',
+                            data: tile.screenshot.toString('base64'),
+                            mimeType: 'image/png',
+                        });
+                    }
+
+                    // Add summary text
+                    content.push({
+                        type: 'text',
+                        text: `✅ Captured ${tiledResult.tiles.length} tiles (${tiledResult.tileSize}x${tiledResult.tileSize} each) from page measuring ${tiledResult.fullWidth}x${tiledResult.fullHeight} pixels`,
+                    });
+
+                    return { content };
+                } else {
+                    // Handle regular screenshot
+                    const base64Screenshot =
+                        result.screenshot.toString('base64');
+
+                    return {
+                        content: [
+                            {
+                                type: 'image',
+                                data: base64Screenshot,
+                                mimeType: 'image/png',
+                            },
+                            {
+                                type: 'text',
+                                text: `✅ Screenshot captured: ${result.viewport.width}x${result.viewport.height} pixels`,
+                            },
+                        ],
+                    };
+                }
             }
-        } else {
-            // Return base64 encoded images as before
-            if ('tiles' in result) {
-                // Handle tiled screenshot result
-                const tiledResult = result as any; // TiledScreenshotResult
+        } else if (request.params.name === 'take_screencast') {
+            // Lazy load the module on first use
+            if (!screenshotModule) {
+                logger.debug('Lazy loading screenshot module...');
+                screenshotModule = await import(
+                    './internal/screenshotCapture.js'
+                );
+                logger.info('Screenshot module loaded successfully');
+            }
+
+            const args = request.params.arguments as any;
+            logger.info(`Processing screencast request for URL: ${args.url}`);
+
+            const duration = args.duration ?? 10;
+            const format = args.format ?? 'webp';
+            const height = Math.min(args.height ?? 1072, 1072); // Cap at 1072
+            // WebP captures every 1 second, PNG captures every 2 seconds
+            const interval = args.directory && format === 'webp' ? 1 : 2;
+
+            logger.debug('Screencast parameters:', {
+                url: args.url,
+                duration,
+                interval,
+                height,
+                waitUntil: args.waitUntil,
+                jsEvaluate: args.jsEvaluate
+                    ? Array.isArray(args.jsEvaluate)
+                        ? `array(${args.jsEvaluate.length})`
+                        : 'string'
+                    : 'none',
+                directory: args.directory,
+                format,
+            });
+
+            logger.debug('Calling captureScreencast...');
+            const result = await screenshotModule.captureScreencast({
+                url: args.url,
+                duration,
+                interval,
+                viewport: {
+                    width: 1072,
+                    height: height,
+                },
+                waitUntil: args.waitUntil ?? 'domcontentloaded',
+                waitFor: undefined, // Removed waitForMS
+                jsEvaluate: args.jsEvaluate,
+            });
+
+            logger.info('Screencast captured successfully');
+            logger.debug(`Captured ${result.frames.length} frames`);
+
+            // If directory is specified, save based on format
+            if (args.directory) {
+                logger.debug(
+                    `Saving screencast to directory: ${args.directory} (format: ${format})`
+                );
+
+                // Ensure directory exists
+                if (!existsSync(args.directory)) {
+                    logger.debug('Creating directory...');
+                    await mkdir(args.directory, { recursive: true });
+                    logger.info('Directory created successfully');
+                }
+
+                const frames = result.frames.map((f: any) => f.screenshot);
+
+                if (format === 'png') {
+                    // Save individual PNG frames only
+                    const framePaths: string[] = [];
+                    for (let i = 0; i < result.frames.length; i++) {
+                        const frameFilename = generateFilename(
+                            args.url,
+                            i,
+                            'frame'
+                        );
+                        const frameFilepath = join(
+                            args.directory,
+                            frameFilename
+                        );
+                        await writeFile(
+                            frameFilepath,
+                            result.frames[i].screenshot
+                        );
+                        framePaths.push(frameFilepath);
+                    }
+
+                    return {
+                        content: [
+                            {
+                                type: 'text',
+                                text: `✅ Screencast saved as PNG frames:\n${framePaths.join('\n')}\n\nDuration: ${result.duration}s\nFrames: ${result.frames.length}\nInterval: ${interval}s`,
+                            },
+                        ],
+                    };
+                } else {
+                    // Save as animated WebP and clean up PNGs
+                    let webpBuffer: Buffer | null = null;
+
+                    try {
+                        // Create animated WebP using node-webpmux (100ms intervals for ultra-smooth animation)
+                        webpBuffer = await createAnimatedWebP(
+                            frames,
+                            100,
+                            4000
+                        );
+                        logger.info('WebP created using node-webpmux');
+                    } catch (error) {
+                        logger.error('Failed to create WebP:', error);
+                        webpBuffer = null;
+                    }
+
+                    if (webpBuffer) {
+                        const filename = generateFilename(
+                            args.url,
+                            undefined,
+                            'screencast'
+                        ).replace('.png', '.webp');
+                        const filepath = join(args.directory, filename);
+                        await writeFile(filepath, webpBuffer);
+
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: `✅ Screencast saved as animated WebP: ${filepath}\n\nDuration: ${result.duration}s\nFrames: ${result.frames.length}\nCapture Interval: 100ms (4s pause at end)\nMethod: node-webpmux`,
+                                },
+                            ],
+                        };
+                    } else {
+                        // Fallback to PNG frames if WebP fails
+                        const framePaths: string[] = [];
+                        for (let i = 0; i < result.frames.length; i++) {
+                            const frameFilename = generateFilename(
+                                args.url,
+                                i,
+                                'frame'
+                            );
+                            const frameFilepath = join(
+                                args.directory,
+                                frameFilename
+                            );
+                            await writeFile(
+                                frameFilepath,
+                                result.frames[i].screenshot
+                            );
+                            framePaths.push(frameFilepath);
+                        }
+
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: `⚠️  WebP creation failed, saved as PNG frames:\n${framePaths.join('\n')}\n\nDuration: ${result.duration}s\nFrames: ${result.frames.length}\nInterval: ${interval}s`,
+                                },
+                            ],
+                        };
+                    }
+                }
+            } else {
+                // Return frames as base64 encoded images
                 const content = [];
 
-                // Add each tile as an image
-                for (const tile of tiledResult.tiles) {
+                // Add each frame as an image
+                for (let i = 0; i < result.frames.length; i++) {
                     content.push({
                         type: 'image',
-                        data: tile.screenshot.toString('base64'),
+                        data: result.frames[i].screenshot.toString('base64'),
                         mimeType: 'image/png',
                     });
                 }
@@ -235,31 +595,18 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                 // Add summary text
                 content.push({
                     type: 'text',
-                    text: `✅ Captured ${tiledResult.tiles.length} tiles (${tiledResult.tileSize}x${tiledResult.tileSize} each) from page measuring ${tiledResult.fullWidth}x${tiledResult.fullHeight} pixels`,
+                    text: `✅ Captured ${result.frames.length} frames over ${result.duration} seconds (${result.interval}s interval)`,
                 });
 
                 return { content };
-            } else {
-                // Handle regular screenshot
-                const base64Screenshot = result.screenshot.toString('base64');
-
-                return {
-                    content: [
-                        {
-                            type: 'image',
-                            data: base64Screenshot,
-                            mimeType: 'image/png',
-                        },
-                        {
-                            type: 'text',
-                            text: `✅ Screenshot captured: ${result.viewport.width}x${result.viewport.height} pixels`,
-                        },
-                    ],
-                };
             }
+        } else {
+            const error = `Unknown tool: ${request.params.name}`;
+            logger.error(error);
+            throw new Error(error);
         }
     } catch (error: any) {
-        logger.error('Error capturing screenshot:', error.message);
+        logger.error('Error in tool execution:', error.message);
         logger.debug('Error stack:', error.stack);
         logger.debug('Error details:', {
             name: error.name,
@@ -323,9 +670,17 @@ async function runServer() {
         process.on('SIGTERM', () => cleanup('SIGTERM'));
 
         // Log heartbeat every 30 seconds to show server is alive
-        setInterval(() => {
+        const heartbeatInterval = setInterval(() => {
             logger.debug('Server heartbeat - still running...');
+            // Log browser stats if module is loaded
+            if (screenshotModule && screenshotModule.getBrowserStats) {
+                const stats = screenshotModule.getBrowserStats();
+                logger.debug('Browser stats:', stats);
+            }
         }, 30000);
+
+        // Allow process to exit if this is the only thing keeping it alive
+        heartbeatInterval.unref();
     } catch (error: any) {
         logger.error('Failed to start server:', error.message);
         logger.debug('Startup error details:', error);

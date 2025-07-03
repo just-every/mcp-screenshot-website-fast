@@ -9,6 +9,19 @@ export interface ScreenshotOptions {
     waitFor?: number;
 }
 
+export interface ScreencastOptions {
+    url: string;
+    duration: number; // Duration in seconds
+    interval: number; // Interval between screenshots in seconds
+    viewport?: {
+        width: number;
+        height: number;
+    };
+    waitUntil?: 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2';
+    waitFor?: number;
+    jsEvaluate?: string | string[]; // JavaScript code to execute - string or array of instructions
+}
+
 export interface ScreenshotResult {
     url: string;
     screenshot: Buffer;
@@ -36,5 +49,23 @@ export interface TiledScreenshotResult {
     fullWidth: number;
     fullHeight: number;
     tileSize: number;
+    format: 'png';
+}
+
+export interface ScreencastResult {
+    url: string;
+    frames: {
+        screenshot: Buffer;
+        timestamp: Date;
+        index: number;
+    }[];
+    startTime: Date;
+    endTime: Date;
+    duration: number;
+    interval: number;
+    viewport: {
+        width: number;
+        height: number;
+    };
     format: 'png';
 }

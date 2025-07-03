@@ -53,6 +53,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "commander": "^14.0.0",
+    "node-webpmux": "^3.2.1",
     "puppeteer": "^24.0.0",
     "sharp": "^0.34.0"
   },
@@ -70,9 +71,9 @@
     "vitest": "^3.2.3"
   },
   "optionalDependencies": {
+    "@rollup/rollup-darwin-x64": "^4.43.0",
     "@rollup/rollup-linux-x64-gnu": "^4.43.0",
     "@rollup/rollup-linux-x64-musl": "^4.43.0",
-    "@rollup/rollup-darwin-x64": "^4.43.0",
     "@rollup/rollup-win32-x64-msvc": "^4.43.0"
   },
   "engines": {

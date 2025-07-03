@@ -18,12 +18,17 @@ Built specifically for AI vision workflows, this tool captures high-quality scre
 - 📸 **Fast screenshot capture** using Puppeteer headless browser
 - 🎯 **Claude Vision optimized** with automatic resolution limiting (1072x1072 for optimal 1.15 megapixels)
 - 🔲 **Automatic tiling** - Full pages are automatically split into 1072x1072 tiles
+- 🎬 **Screencast capture** - Record series of screenshots over time with configurable intervals
 - 🔄 **Always fresh content** - No caching ensures up-to-date screenshots
 - 📱 **Configurable viewports** for responsive testing
 - ⏱️ **Wait strategies** for dynamic content (networkidle, custom delays)
 - 📄 **Full page capture** by default for complete page screenshots
+- 🎥 **Animated WebP export** - Save screencasts as high-quality animated WebP files
+- 💉 **JavaScript injection** - Execute custom JS before screencast capture
 - 📦 **Minimal dependencies** for fast npm installs
 - 🔌 **MCP integration** for seamless AI workflows
+- 🔋 **Resource efficient** - Automatic browser cleanup after 60 seconds of inactivity
+- 🧹 **Memory management** - Pages are closed after each screenshot to prevent leaks
 
 ## Installation
 
@@ -111,6 +116,54 @@ When using the `directory` parameter:
 - File paths are returned instead of base64 data
 - For tiled screenshots, each tile is saved as a separate file
 - Directory is created automatically if it doesn't exist
+
+### take_screencast
+
+Captures a series of screenshots over time to create a screencast. Only captures the top tile (1072x1072) of the viewport.
+
+#### Parameters
+- `url` (required): The URL to capture
+- `duration` (optional): Total duration in seconds (default: 10)
+- `interval` (optional): Interval between screenshots in seconds (default: 2)
+- `jsEvaluate` (optional): JavaScript code to execute at the start
+- `waitUntil` (optional): Wait strategy: 'load', 'domcontentloaded', 'networkidle0', 'networkidle2'
+- `waitForMS` (optional): Additional wait time before starting
+- `directory` (optional): Save as animated WebP to directory (captures every 1 second)
+
+#### Usage Examples
+
+**Basic screencast (5 frames over 10 seconds):**
+```
+take_screencast(url="https://example.com")
+```
+
+**Custom timing:**
+```
+take_screencast(url="https://example.com", duration=15, interval=3)
+```
+
+**With JavaScript execution:**
+```
+take_screencast(
+  url="https://example.com",
+  jsEvaluate="document.body.style.backgroundColor = 'red';"
+)
+```
+
+**Save as animated WebP:**
+```
+take_screencast(url="https://example.com", directory="/path/to/output")
+```
+
+When using the `directory` parameter:
+- An animated WebP is created with 1-second intervals
+- Individual frames are also saved as PNG files
+- The animation loops forever by default
+- WebP provides excellent quality:
+  - Full color support (no 256 color limitation)
+  - Efficient compression for web animations
+  - Perfect for gradient backgrounds and smooth animations
+  - Smaller file sizes compared to GIF with better quality
 
 ## Development Usage
 
