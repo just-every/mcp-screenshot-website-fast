@@ -98,7 +98,7 @@ const SCREENSHOT_TOOL: Tool = {
 const SCREENCAST_TOOL: Tool = {
     name: 'take_screencast',
     description:
-        'Capture a series of screenshots of a web page over time, producing a screencast. Captures screenshots at 2-second intervals. PNG format: individual frames. WebP format: animated WebP with 4-second pause at end for looping.',
+        'Capture a series of screenshots of a web page over time, producing a screencast. Uses adaptive frame rates: 100ms intervals for ≤5s, 200ms for 5-10s, 500ms for >10s. PNG format: individual frames. WebP format: animated WebP with 4-second pause at end for looping.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -110,6 +110,11 @@ const SCREENCAST_TOOL: Tool = {
                 type: 'number',
                 description: 'Total duration of screencast in seconds',
                 default: 10,
+            },
+            width: {
+                type: 'number',
+                description: 'Viewport width in pixels (max 1072)',
+                default: 1072,
             },
             height: {
                 type: 'number',
@@ -151,12 +156,58 @@ const SCREENCAST_TOOL: Tool = {
                 enum: ['png', 'webp'],
                 default: 'webp',
             },
+            quality: {
+                type: 'string',
+                description:
+                    'WebP quality level (only applies when format is "webp"): low (50), medium (75), high (90)',
+                enum: ['low', 'medium', 'high'],
+                default: 'medium',
+            },
         },
         required: ['url'],
     },
     annotations: {
         title: 'Take Screencast',
         readOnlyHint: true, // Screencasts don't modify anything
+        destructiveHint: false,
+        idempotentHint: false, // Each call captures fresh content
+        openWorldHint: true, // Interacts with external websites
+    },
+};
+
+const CONSOLE_CAPTURE_TOOL: Tool = {
+    name: 'capture_console',
+    description:
+        'Capture console output from a web page. Accepts a URL, optional JS command to run, and duration to wait (default 4 seconds). Returns all console messages during that time.',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            url: {
+                type: 'string',
+                description: 'HTTP/HTTPS URL to capture console from',
+            },
+            jsCommand: {
+                type: 'string',
+                description:
+                    'Optional JavaScript command to execute on the page',
+            },
+            duration: {
+                type: 'number',
+                description: 'Duration to capture console output in seconds',
+                default: 4,
+            },
+            waitUntil: {
+                type: 'string',
+                description:
+                    'Wait until event: load, domcontentloaded, networkidle0, networkidle2',
+                default: 'domcontentloaded',
+            },
+        },
+        required: ['url'],
+    },
+    annotations: {
+        title: 'Capture Console Output',
+        readOnlyHint: true, // Console capture doesn't modify anything
         destructiveHint: false,
         idempotentHint: false, // Each call captures fresh content
         openWorldHint: true, // Interacts with external websites
@@ -170,7 +221,7 @@ const RESOURCES: Resource[] = [];
 server.setRequestHandler(ListToolsRequestSchema, async () => {
     logger.debug('Received ListTools request');
     const response = {
-        tools: [SCREENSHOT_TOOL, SCREENCAST_TOOL],
+        tools: [SCREENSHOT_TOOL, SCREENCAST_TOOL, CONSOLE_CAPTURE_TOOL],
     };
     logger.debug(
         'Returning tools:',
@@ -196,7 +247,8 @@ function generateFilename(
 async function createAnimatedWebP(
     frames: Buffer[],
     delay: number,
-    endDelay?: number
+    endDelay?: number,
+    quality: 'low' | 'medium' | 'high' = 'medium'
 ): Promise<Buffer> {
     const { writeFile, readFile, rm } = await import('fs/promises');
     const { join, dirname } = await import('path');
@@ -255,7 +307,7 @@ async function createAnimatedWebP(
             '-loop',
             '0', // Loop infinitely
             '-q',
-            '60', // Quality 60
+            String(quality === 'high' ? 90 : quality === 'medium' ? 75 : 50), // Quality setting
             '-m',
             '6', // Compression method 6
         ];
@@ -446,14 +498,30 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
             const duration = args.duration ?? 10;
             const format = args.format ?? 'webp';
+            const width = Math.min(args.width ?? 1072, 1072); // Cap at 1072
             const height = Math.min(args.height ?? 1072, 1072); // Cap at 1072
-            // Use 100ms intervals for WebP directory saves, 2s intervals for normal screencasts
-            const interval = args.directory && format === 'webp' ? 0.1 : 2;
+            const quality = args.quality ?? 'medium';
+
+            // Adaptive frame rate based on duration to manage memory
+            let interval: number;
+            if (args.directory && format === 'webp') {
+                // For WebP exports, use adaptive intervals based on duration
+                if (duration <= 5) {
+                    interval = 0.1; // 100ms for <= 5s (up to 50 frames)
+                } else if (duration <= 10) {
+                    interval = 0.2; // 200ms for 5-10s (up to 50 frames)
+                } else {
+                    interval = 0.5; // 500ms for > 10s (manageable frame count)
+                }
+            } else {
+                interval = 2; // 2s for base64 returns
+            }
 
             logger.debug('Screencast parameters:', {
                 url: args.url,
                 duration,
                 interval,
+                width,
                 height,
                 waitUntil: args.waitUntil,
                 jsEvaluate: args.jsEvaluate
@@ -463,6 +531,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                     : 'none',
                 directory: args.directory,
                 format,
+                quality,
             });
 
             logger.debug('Calling captureScreencast...');
@@ -471,7 +540,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                 duration,
                 interval,
                 viewport: {
-                    width: 1072,
+                    width: width,
                     height: height,
                 },
                 waitUntil: args.waitUntil ?? 'domcontentloaded',
@@ -530,11 +599,13 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                     let webpBuffer: Buffer | null = null;
 
                     try {
-                        // Create animated WebP using img2webp (100ms intervals for ultra-smooth animation)
+                        // Create animated WebP using img2webp with adaptive intervals
+                        const frameDelay = interval * 1000; // Convert to milliseconds
                         webpBuffer = await createAnimatedWebP(
                             frames,
-                            100,
-                            4000
+                            frameDelay,
+                            4000,
+                            quality as 'low' | 'medium' | 'high'
                         );
                         logger.info('WebP created using img2webp CLI');
                     } catch (error) {
@@ -555,7 +626,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                             content: [
                                 {
                                     type: 'text',
-                                    text: `✅ Screencast saved as animated WebP: ${filepath}\n\nDuration: ${result.duration}s\nFrames: ${result.frames.length}\nCapture Interval: 100ms (4s pause at end)\nMethod: img2webp (optimized with frame deduplication)`,
+                                    text: `✅ Screencast saved as animated WebP: ${filepath}\n\nDuration: ${result.duration}s\nFrames: ${result.frames.length}\nCapture Interval: ${interval * 1000}ms (4s pause at end)\nQuality: ${quality}\nMethod: img2webp (optimized with frame deduplication)`,
                                 },
                             ],
                         };
@@ -610,6 +681,61 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
                 return { content };
             }
+        } else if (request.params.name === 'capture_console') {
+            // Lazy load the module on first use
+            if (!screenshotModule) {
+                logger.debug('Loading screenshot module...');
+                screenshotModule = await import(
+                    './internal/screenshotCapture.js'
+                );
+                logger.info('Screenshot module loaded successfully');
+            }
+
+            const args = request.params.arguments as any;
+            logger.info(
+                `Processing console capture request for URL: ${args.url}`
+            );
+            logger.debug('Console capture parameters:', {
+                url: args.url,
+                jsCommand: args.jsCommand,
+                duration: args.duration,
+                waitUntil: args.waitUntil,
+            });
+
+            logger.debug('Calling captureConsole...');
+            const result = await screenshotModule.captureConsole({
+                url: args.url,
+                jsCommand: args.jsCommand,
+                duration: args.duration,
+                waitUntil: args.waitUntil,
+            });
+
+            logger.info('Console capture completed successfully');
+            logger.debug(`Captured ${result.messages.length} console messages`);
+
+            // Format the console messages for output
+            const formattedMessages = result.messages
+                .map((msg: any) => {
+                    const timestamp = msg.timestamp.toISOString();
+                    return `[${timestamp}] [${msg.type.toUpperCase()}] ${msg.text}`;
+                })
+                .join('\n');
+
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: `✅ Console capture completed for ${result.url}
+
+Duration: ${result.duration} seconds
+Messages captured: ${result.messages.length}
+${result.executedCommand ? `JS Command executed: ${result.executedCommand}` : 'No JS command executed'}
+
+Console Output:
+${formattedMessages || '(No console messages captured)'}`,
+                    },
+                ],
+            };
         } else {
             const error = `Unknown tool: ${request.params.name}`;
             logger.error(error);

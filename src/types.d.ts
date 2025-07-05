@@ -69,3 +69,26 @@ export interface ScreencastResult {
     };
     format: 'png';
 }
+
+export interface ConsoleMessage {
+    type: 'log' | 'error' | 'warn' | 'info' | 'debug';
+    text: string;
+    timestamp: Date;
+    args?: any[];
+}
+
+export interface ConsoleCaptureOptions {
+    url: string;
+    jsCommand?: string;
+    duration?: number; // Duration in seconds, default 4
+    waitUntil?: 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2';
+}
+
+export interface ConsoleCaptureResult {
+    url: string;
+    messages: ConsoleMessage[];
+    startTime: Date;
+    endTime: Date;
+    duration: number;
+    executedCommand?: string;
+}

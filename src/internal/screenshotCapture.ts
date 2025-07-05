@@ -5,6 +5,9 @@ import {
     TiledScreenshotResult,
     ScreencastOptions,
     ScreencastResult,
+    ConsoleCaptureOptions,
+    ConsoleCaptureResult,
+    ConsoleMessage,
 } from '../types.js';
 import { logger, LogLevel } from '../utils/logger.js';
 
@@ -577,7 +580,7 @@ process.on('unhandledRejection', async error => {
 async function captureTiledScreenshot(
     options: ScreenshotOptions
 ): Promise<TiledScreenshotResult> {
-    const tileSize = 1072;
+    const tileSize = options.viewport?.width || 1072;
 
     logger.info(`Taking tiled screenshot of ${options.url}`);
 
@@ -628,24 +631,37 @@ async function captureTiledScreenshot(
                 );
             }
 
-            // Take a full page screenshot
+            // Get the full page height
+            const fullPageHeight = await page.evaluate(() => {
+                // This runs in the browser context where document is available
+                return (globalThis as any).document.documentElement
+                    .scrollHeight;
+            });
+
+            // Take a screenshot with explicit dimensions to ensure width is constrained
             logger.info('Capturing full page screenshot...');
             const fullPageScreenshot = (await page.screenshot({
                 type: 'png',
-                fullPage: true,
+                fullPage: false,
                 encoding: 'binary',
+                clip: {
+                    x: 0,
+                    y: 0,
+                    width: tileSize,
+                    height: fullPageHeight,
+                },
             })) as Buffer;
 
             // Import sharp dynamically to process the image
             const sharp = await import('sharp');
             const metadata = await sharp.default(fullPageScreenshot).metadata();
             const dimensions = {
-                width: metadata.width!,
+                width: Math.min(metadata.width!, tileSize),
                 height: metadata.height!,
             };
 
             logger.info(
-                `Full page dimensions: ${dimensions.width}x${dimensions.height}`
+                `Full page dimensions: ${dimensions.width}x${dimensions.height} (viewport width: ${tileSize})`
             );
 
             // Calculate number of tiles needed
@@ -933,6 +949,124 @@ export async function captureScreencast(
         return result;
     } catch (error: any) {
         logger.error('Error capturing screencast:', error);
+
+        // Clean up the page
+        if (page && !page.isClosed()) {
+            await page.close().catch(() => {});
+        }
+
+        throw error;
+    }
+}
+
+export async function captureConsole(
+    options: ConsoleCaptureOptions
+): Promise<ConsoleCaptureResult> {
+    logger.info('captureConsole called with options:', {
+        url: options.url,
+        jsCommand: options.jsCommand,
+        duration: options.duration,
+        waitUntil: options.waitUntil,
+    });
+
+    // Update activity time when console capture is requested
+    updateActivityTime();
+
+    const messages: ConsoleMessage[] = [];
+    const startTime = new Date();
+    const duration = options.duration || 4; // Default 4 seconds
+
+    let browser: Browser | null = null;
+    let page: Page | null = null;
+
+    try {
+        // Get browser instance
+        browser = await getBrowser();
+        page = await setupPage(browser);
+
+        // Set up console message listener
+        page.on('console', msg => {
+            const type = msg.type() as ConsoleMessage['type'];
+            const text = msg.text();
+            const timestamp = new Date();
+
+            // Try to get the actual arguments
+            const args: any[] = [];
+            msg.args().forEach(arg => {
+                args.push(arg.toString());
+            });
+
+            messages.push({
+                type,
+                text,
+                timestamp,
+                args: args.length > 0 ? args : undefined,
+            });
+
+            logger.debug(`Console ${type}: ${text}`);
+        });
+
+        // Set up page error listener
+        page.on('pageerror', error => {
+            messages.push({
+                type: 'error',
+                text: error.toString(),
+                timestamp: new Date(),
+            });
+            logger.debug(`Page error: ${error}`);
+        });
+
+        logger.info(`Starting console capture for ${options.url}`);
+
+        // Navigate to the page
+        await page.goto(options.url, {
+            waitUntil: options.waitUntil || 'domcontentloaded',
+            timeout: 60000,
+        });
+
+        // Execute JS command if provided
+        if (options.jsCommand) {
+            logger.info(`Executing JS command: ${options.jsCommand}`);
+            try {
+                await page.evaluate(options.jsCommand);
+                logger.debug('JS command executed successfully');
+            } catch (error) {
+                logger.error('Failed to execute JS command:', error);
+                messages.push({
+                    type: 'error',
+                    text: `Failed to execute JS command: ${error}`,
+                    timestamp: new Date(),
+                });
+            }
+        }
+
+        // Wait for the specified duration
+        logger.info(`Capturing console for ${duration} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, duration * 1000));
+
+        const endTime = new Date();
+
+        const result: ConsoleCaptureResult = {
+            url: options.url,
+            messages,
+            startTime,
+            endTime,
+            duration,
+            executedCommand: options.jsCommand,
+        };
+
+        logger.info(
+            `Console capture completed: ${messages.length} messages captured`
+        );
+
+        // Clean up the page after successful capture
+        if (page && !page.isClosed()) {
+            await page.close().catch(() => {});
+        }
+
+        return result;
+    } catch (error: any) {
+        logger.error('Error capturing console:', error);
 
         // Clean up the page
         if (page && !page.isClosed()) {
