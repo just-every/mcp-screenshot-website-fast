@@ -1,6 +1,6 @@
 {
   "name": "@just-every/mcp-screenshot-website-fast",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "Fast screenshot capture tool for web pages - optimized for Claude Vision API",
   "main": "dist/index.js",
   "bin": {
