@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/just-every-mcp-screenshot-website-fast-badge.png)](https://mseep.ai/app/just-every-mcp-screenshot-website-fast)
+
 # @just-every/mcp-screenshot-website-fast
 
 Fast, efficient screenshot capture of web pages - optimized for CLI coding tools. Automatically tiles full pages into 1072x1072 chunks for optimal processing.
