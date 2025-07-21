@@ -9,10 +9,8 @@ import {
     ConsoleCaptureResult,
     ConsoleMessage,
 } from '../types.js';
-import { logger, LogLevel } from '../utils/logger.js';
+import { logger } from '../utils/logger.js';
 
-// Enable debug logging for screenshot module
-logger.setLevel(LogLevel.DEBUG);
 logger.debug('Screenshot module loaded');
 
 let browser: Browser | null = null;

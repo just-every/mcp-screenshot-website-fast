@@ -13,13 +13,7 @@ import {
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { logger, LogLevel } from './utils/logger.js';
-
-// Default to ERROR level if LOG_LEVEL not set to avoid interfering with MCP protocol
-// The logger already reads LOG_LEVEL from environment in logger.ts
-if (!process.env.LOG_LEVEL) {
-    logger.setLevel(LogLevel.ERROR);
-}
+import { logger } from './utils/logger.js';
 
 logger.info('MCP Server starting up...');
 logger.debug('Node version:', process.version);

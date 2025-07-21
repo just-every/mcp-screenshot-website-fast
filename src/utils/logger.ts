@@ -10,7 +10,7 @@ export class Logger {
     private level: LogLevel;
     private name: string;
 
-    constructor(name: string, level: LogLevel = LogLevel.INFO) {
+    constructor(name: string, level: LogLevel = LogLevel.ERROR) {
         this.name = name;
         this.level = level;
     }
@@ -66,4 +66,7 @@ if (envLevel) {
             LogLevel[envLevel as keyof typeof LogLevel] as unknown as LogLevel
         );
     }
+} else {
+    // Default to OFF for MCP servers to avoid any debug output
+    logger.setLevel(LogLevel.OFF);
 }
