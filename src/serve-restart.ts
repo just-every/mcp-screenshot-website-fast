@@ -18,6 +18,12 @@ let currentBackoff = INITIAL_BACKOFF_MS;
 
 // Log to stderr to avoid stdout conflicts
 const log = (level: string, message: string, ...args: any[]) => {
+    // Only log if LOG_LEVEL is set and not OFF
+    const logLevel = process.env.LOG_LEVEL?.toUpperCase();
+    if (!logLevel || logLevel === 'OFF') {
+        return;
+    }
+    
     const timestamp = new Date().toISOString();
     console.error(
         `[${timestamp}] [${level}] [restart-wrapper]`,

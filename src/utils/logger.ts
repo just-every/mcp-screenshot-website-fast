@@ -1,4 +1,5 @@
 export enum LogLevel {
+    OFF = -1,
     ERROR = 0,
     WARN = 1,
     INFO = 2,
@@ -57,8 +58,12 @@ export const logger = new Logger('MCP');
 
 // Set log level from environment
 const envLevel = process.env.LOG_LEVEL?.toUpperCase();
-if (envLevel && envLevel in LogLevel) {
-    logger.setLevel(
-        LogLevel[envLevel as keyof typeof LogLevel] as unknown as LogLevel
-    );
+if (envLevel) {
+    if (envLevel === 'OFF') {
+        logger.setLevel(LogLevel.OFF);
+    } else if (envLevel in LogLevel) {
+        logger.setLevel(
+            LogLevel[envLevel as keyof typeof LogLevel] as unknown as LogLevel
+        );
+    }
 }

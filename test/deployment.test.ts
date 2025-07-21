@@ -45,17 +45,17 @@ describe('Deployment Tests', () => {
           console.log('[CI Debug] stderr chunk:', chunk);
         }
         
-        // Check for various startup messages
-        if (stderr.includes('[serve.ts] Process started') ||
-            stderr.includes('MCP Server starting up') ||
-            stderr.includes('MCP server connected and running successfully!') ||
-            stderr.includes('Ready to receive requests')) {
+        // Check for various startup messages from logger
+        if (stderr.includes('[INFO] [MCP] MCP Server starting up') ||
+            stderr.includes('[INFO] [MCP] MCP server connected and running successfully!') ||
+            stderr.includes('[INFO] [MCP] Ready to receive requests') ||
+            stderr.includes('[DEBUG] [MCP] Creating MCP server instance')) {
           if (!resolved) {
             resolved = true;
             // Wait a bit to capture the full startup message
             setTimeout(() => {
               serverProcess.kill();
-              expect(stderr).toMatch(/Process started|MCP Server starting up|MCP server connected and running successfully!|Ready to receive requests/);
+              expect(stderr).toMatch(/\[INFO\] \[MCP\] MCP Server starting up|\[INFO\] \[MCP\] MCP server connected and running successfully!|\[INFO\] \[MCP\] Ready to receive requests/);
               resolve();
             }, 100);
           }
@@ -124,17 +124,17 @@ describe('Deployment Tests', () => {
           console.log('[CI Debug - bin] stderr chunk:', chunk);
         }
         
-        // Check for various startup messages
-        if (stderr.includes('[serve.ts] Process started') ||
-            stderr.includes('MCP Server starting up') ||
-            stderr.includes('MCP server connected and running successfully!') ||
-            stderr.includes('Ready to receive requests')) {
+        // Check for various startup messages from logger
+        if (stderr.includes('[INFO] [MCP] MCP Server starting up') ||
+            stderr.includes('[INFO] [MCP] MCP server connected and running successfully!') ||
+            stderr.includes('[INFO] [MCP] Ready to receive requests') ||
+            stderr.includes('[DEBUG] [MCP] Creating MCP server instance')) {
           if (!resolved) {
             resolved = true;
             // Wait a bit to capture the full startup message
             setTimeout(() => {
               binProcess.kill();
-              expect(stderr).toMatch(/Process started|MCP Server starting up|MCP server connected and running successfully!|Ready to receive requests/);
+              expect(stderr).toMatch(/\[INFO\] \[MCP\] MCP Server starting up|\[INFO\] \[MCP\] MCP server connected and running successfully!|\[INFO\] \[MCP\] Ready to receive requests/);
               resolve();
             }, 100);
           }
