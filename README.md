@@ -9,6 +9,10 @@ Fast, efficient screenshot capture of web pages - optimized for CLI coding tools
 [![npm version](https://badge.fury.io/js/@just-every%2Fmcp-screenshot-website-fast.svg)](https://www.npmjs.com/package/@just-every/mcp-screenshot-website-fast)
 [![GitHub Actions](https://github.com/just-every/mcp-screenshot-website-fast/workflows/Release/badge.svg)](https://github.com/just-every/mcp-screenshot-website-fast/actions)
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/just-every-mcp-screenshot-website-fast).
+
 ## Overview
 
 Built specifically for AI vision workflows, this tool captures high-quality screenshots with automatic resolution limiting and tiling for optimal processing by Claude Vision API and other AI models. It ensures screenshots are perfectly sized at 1072x1072 pixels (1.15 megapixels) for maximum compatibility.
