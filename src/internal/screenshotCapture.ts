@@ -1,6 +1,7 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
 import {
     ScreenshotOptions,
+    SelectorScreenshotOptions,
     ScreenshotResult,
     TiledScreenshotResult,
     ScreencastOptions,
@@ -21,6 +22,10 @@ let inactivityTimer: NodeJS.Timeout | null = null;
 // Configuration
 const BROWSER_IDLE_TIMEOUT_MS = 60000; // Close browser after 1 minute of inactivity
 const MIN_BROWSER_LIFETIME_MS = 5000; // Keep browser alive for at least 5 seconds
+
+function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
 
 // Browser lifecycle management
 function updateActivityTime() {
@@ -267,7 +272,7 @@ async function setupPage(browser: Browser): Promise<Page> {
     });
 
     page.on('pageerror', error => {
-        logger.warn('Page JavaScript error:', error.message || error);
+        logger.warn('Page JavaScript error:', getErrorMessage(error));
     });
 
     // Handle frame lifecycle events
@@ -503,6 +508,118 @@ export async function captureScreenshot(
     throw new Error('Failed to capture screenshot after all attempts');
 }
 
+export async function captureSelectorScreenshot(
+    options: SelectorScreenshotOptions
+): Promise<ScreenshotResult> {
+    logger.info('captureSelectorScreenshot called with options:', {
+        url: options.url,
+        selector: options.selector,
+        viewport: options.viewport,
+        waitUntil: options.waitUntil,
+        waitFor: options.waitFor,
+        selectorTimeoutMS: options.selectorTimeoutMS,
+    });
+
+    updateActivityTime();
+
+    let browser: Browser | null = null;
+    let page: Page | null = null;
+    let attemptCount = 0;
+    const maxAttempts = 2;
+
+    while (attemptCount < maxAttempts) {
+        try {
+            attemptCount++;
+
+            browser = await getBrowser(attemptCount > 1);
+            page = await setupPage(browser);
+
+            const viewport = {
+                width: options.viewport?.width || 1072,
+                height: options.viewport?.height || 1072,
+            };
+            await page.setViewport(viewport);
+
+            const recoveryCallback = async (): Promise<Page> => {
+                logger.info('Recovering from error, creating new page...');
+                browser = await getBrowser(true);
+                const newPage = await setupPage(browser);
+                await newPage.setViewport(viewport);
+                return newPage;
+            };
+
+            page = await navigateWithRetry(
+                page,
+                options.url,
+                options,
+                recoveryCallback
+            );
+
+            if (options.waitFor) {
+                await page.evaluate(
+                    ms => new Promise(resolve => setTimeout(resolve, ms)),
+                    options.waitFor
+                );
+            }
+
+            let elementHandle;
+            try {
+                elementHandle = await page.waitForSelector(options.selector, {
+                    timeout: options.selectorTimeoutMS ?? 5000,
+                });
+            } catch (error) {
+                throw new Error(
+                    `Selector "${options.selector}" was not found on ${options.url}`,
+                    { cause: error }
+                );
+            }
+
+            if (!elementHandle) {
+                throw new Error(
+                    `Selector "${options.selector}" was not found on ${options.url}`
+                );
+            }
+
+            const screenshot = (await elementHandle.screenshot({
+                type: 'png',
+                encoding: 'binary',
+            })) as Buffer;
+
+            const result: ScreenshotResult = {
+                url: options.url,
+                screenshot,
+                timestamp: new Date(),
+                viewport,
+                format: 'png',
+            };
+
+            if (page && !page.isClosed()) {
+                await page.close().catch(() => {});
+            }
+
+            return result;
+        } catch (error) {
+            logger.error(
+                `Error taking selector screenshot (attempt ${attemptCount}/${maxAttempts}):`,
+                error
+            );
+
+            if (page && !page.isClosed()) {
+                await page.close().catch(() => {});
+            }
+
+            if (attemptCount >= maxAttempts) {
+                throw error;
+            }
+
+            logger.info('Retrying selector capture with fresh browser...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+    }
+
+    throw new Error('Failed to capture selector screenshot after all attempts');
+}
+
 // Export browser statistics for monitoring
 export function getBrowserStats() {
     return {
@@ -629,67 +746,71 @@ async function captureTiledScreenshot(
                 );
             }
 
-            // Get the full page height
-            const fullPageHeight = await page.evaluate(() => {
-                // This runs in the browser context where document is available
-                return (globalThis as any).document.documentElement
-                    .scrollHeight;
+            // Get the full page dimensions
+            const dimensions = await page.evaluate(() => {
+                const doc = (globalThis as any).document;
+
+                return {
+                    width: Math.max(
+                        doc.documentElement.scrollWidth,
+                        doc.body.scrollWidth,
+                        doc.documentElement.offsetWidth,
+                        doc.body.offsetWidth,
+                        doc.documentElement.clientWidth
+                    ),
+                    height: Math.max(
+                        doc.documentElement.scrollHeight,
+                        doc.body.scrollHeight,
+                        doc.documentElement.offsetHeight,
+                        doc.body.offsetHeight,
+                        doc.documentElement.clientHeight
+                    ),
+                };
             });
 
-            // Take a screenshot with explicit dimensions to ensure width is constrained
-            logger.info('Capturing full page screenshot...');
-            const fullPageScreenshot = (await page.screenshot({
-                type: 'png',
-                fullPage: false,
-                encoding: 'binary',
-                clip: {
-                    x: 0,
-                    y: 0,
-                    width: tileSize,
-                    height: fullPageHeight,
-                },
-            })) as Buffer;
-
-            // Import sharp dynamically to process the image
-            const sharp = await import('sharp');
-            const metadata = await sharp.default(fullPageScreenshot).metadata();
-            const dimensions = {
-                width: Math.min(metadata.width!, tileSize),
-                height: metadata.height!,
-            };
+            // Width should be constrained by our viewport width for tiling
+            const fullWidth = Math.min(dimensions.width, tileSize);
+            const fullHeight = dimensions.height;
 
             logger.info(
-                `Full page dimensions: ${dimensions.width}x${dimensions.height} (viewport width: ${tileSize})`
+                `Full page dimensions: ${fullWidth}x${fullHeight} (viewport width: ${tileSize})`
             );
 
             // Calculate number of tiles needed
-            const cols = Math.ceil(dimensions.width / tileSize);
-            const rows = Math.ceil(dimensions.height / tileSize);
+            const cols = Math.ceil(fullWidth / tileSize);
+            const rows = Math.ceil(fullHeight / tileSize);
             const tiles = [];
 
             logger.info(
-                `Creating ${rows}x${cols} tiles (${rows * cols} total)`
+                `Capturing ${rows}x${cols} tiles (${rows * cols} total) sequentially...`
             );
 
-            // Cut the full page screenshot into tiles
+            // Capture tiles one by one
             for (let row = 0; row < rows; row++) {
                 for (let col = 0; col < cols; col++) {
                     const x = col * tileSize;
                     const y = row * tileSize;
-                    const width = Math.min(tileSize, dimensions.width - x);
-                    const height = Math.min(tileSize, dimensions.height - y);
+                    const width = Math.min(tileSize, fullWidth - x);
+                    const height = Math.min(tileSize, fullHeight - y);
 
-                    // Extract tile from full page screenshot
-                    const tileBuffer = await sharp
-                        .default(fullPageScreenshot)
-                        .extract({
-                            left: x,
-                            top: y,
+                    // Skip empty tiles if they occur due to rounding
+                    if (width <= 0 || height <= 0) continue;
+
+                    logger.debug(
+                        `Capturing tile ${row},${col} at ${x},${y} (${width}x${height})...`
+                    );
+
+                    // Capture this specific tile directly from the page
+                    const tileBuffer = (await page.screenshot({
+                        type: 'png',
+                        encoding: 'binary',
+                        clip: {
+                            x,
+                            y,
                             width,
                             height,
-                        })
-                        .png()
-                        .toBuffer();
+                        },
+                    })) as Buffer;
 
                     tiles.push({
                         screenshot: tileBuffer,
@@ -701,10 +822,6 @@ async function captureTiledScreenshot(
                         width,
                         height,
                     });
-
-                    logger.debug(
-                        `Created tile ${row},${col} at ${x},${y} (${width}x${height})`
-                    );
                 }
             }
 
@@ -712,8 +829,8 @@ async function captureTiledScreenshot(
                 url: options.url,
                 tiles,
                 timestamp: new Date(),
-                fullWidth: dimensions.width,
-                fullHeight: dimensions.height,
+                fullWidth,
+                fullHeight,
                 tileSize,
                 format: 'png',
             };
@@ -1008,10 +1125,10 @@ export async function captureConsole(
         page.on('pageerror', error => {
             messages.push({
                 type: 'error',
-                text: error.toString(),
+                text: getErrorMessage(error),
                 timestamp: new Date(),
             });
-            logger.debug(`Page error: ${error}`);
+            logger.debug(`Page error: ${getErrorMessage(error)}`);
         });
 
         logger.info(`Starting console capture for ${options.url}`);

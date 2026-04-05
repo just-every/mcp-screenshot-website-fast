@@ -65,6 +65,7 @@ export default [
                 console: 'readonly',
                 setTimeout: 'readonly',
                 clearTimeout: 'readonly',
+                fetch: 'readonly',
                 __dirname: 'readonly',
                 __filename: 'readonly',
                 require: 'readonly',
@@ -72,6 +73,6 @@ export default [
                 exports: 'readonly'
             }
         },
-        files: ['scripts/**/*.js'],
+        files: ['scripts/**/*.js', 'bin/**/*.js'],
     },
 ];

@@ -27,7 +27,7 @@ logger.debug('Creating MCP server instance...');
 const server = new Server(
     {
         name: 'screenshot-website-fast',
-        version: '0.1.0',
+        version: '0.1.25',
     },
     {
         capabilities: {
@@ -168,6 +168,59 @@ const SCREENCAST_TOOL: Tool = {
     },
 };
 
+const CAPTURE_SELECTOR_TOOL: Tool = {
+    name: 'capture_selector',
+    description:
+        'Capture a screenshot of a specific DOM element matched by a CSS selector. Use this when a full-page screenshot would send unnecessary pixels.',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            url: {
+                type: 'string',
+                description: 'HTTP/HTTPS URL to capture',
+            },
+            selector: {
+                type: 'string',
+                description: 'CSS selector for the element to capture',
+            },
+            width: {
+                type: 'number',
+                description: 'Viewport width in pixels (max 1072)',
+                default: 1072,
+            },
+            height: {
+                type: 'number',
+                description: 'Viewport height in pixels (max 1072)',
+                default: 1072,
+            },
+            waitUntil: {
+                type: 'string',
+                description:
+                    'Wait until event: load, domcontentloaded, networkidle0, networkidle2',
+                default: 'domcontentloaded',
+            },
+            waitForMS: {
+                type: 'number',
+                description: 'Additional wait time in milliseconds',
+            },
+            selectorTimeoutMS: {
+                type: 'number',
+                description:
+                    'How long to wait for the selector to appear before failing',
+                default: 5000,
+            },
+        },
+        required: ['url', 'selector'],
+    },
+    annotations: {
+        title: 'Capture Selector',
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+    },
+};
+
 const CONSOLE_CAPTURE_TOOL: Tool = {
     name: 'capture_console',
     description:
@@ -214,7 +267,12 @@ const RESOURCES: Resource[] = [];
 server.setRequestHandler(ListToolsRequestSchema, async () => {
     logger.debug('Received ListTools request');
     const response = {
-        tools: [SCREENSHOT_TOOL, SCREENCAST_TOOL, CONSOLE_CAPTURE_TOOL],
+        tools: [
+            SCREENSHOT_TOOL,
+            SCREENCAST_TOOL,
+            CAPTURE_SELECTOR_TOOL,
+            CONSOLE_CAPTURE_TOOL,
+        ],
     };
     logger.debug(
         'Returning tools:',
@@ -340,9 +398,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             // Lazy load the module on first use (may already be loaded from warmup)
             if (!screenshotModule) {
                 logger.debug('Loading screenshot module...');
-                screenshotModule = await import(
-                    './internal/screenshotCapture.js'
-                );
+                screenshotModule =
+                    await import('./internal/screenshotCapture.js');
                 logger.info('Screenshot module loaded successfully');
             }
 
@@ -469,13 +526,59 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                     };
                 }
             }
+        } else if (request.params.name === 'capture_selector') {
+            if (!screenshotModule) {
+                logger.debug('Loading screenshot module...');
+                screenshotModule =
+                    await import('./internal/screenshotCapture.js');
+                logger.info('Screenshot module loaded successfully');
+            }
+
+            const args = request.params.arguments as any;
+            logger.info(
+                `Processing selector capture request for URL: ${args.url}`
+            );
+            logger.debug('Selector capture parameters:', {
+                url: args.url,
+                selector: args.selector,
+                width: args.width,
+                height: args.height,
+                waitUntil: args.waitUntil,
+                waitForMS: args.waitForMS,
+                selectorTimeoutMS: args.selectorTimeoutMS,
+            });
+
+            const result = await screenshotModule.captureSelectorScreenshot({
+                url: args.url,
+                selector: args.selector,
+                viewport: {
+                    width: Math.min(args.width ?? 1072, 1072),
+                    height: Math.min(args.height ?? 1072, 1072),
+                },
+                waitUntil: args.waitUntil ?? 'domcontentloaded',
+                waitFor: args.waitForMS,
+                selectorTimeoutMS: args.selectorTimeoutMS,
+            });
+
+            return {
+                content: [
+                    {
+                        type: 'image',
+                        data: result.screenshot.toString('base64'),
+                        mimeType: 'image/png',
+                    },
+                    {
+                        type: 'text',
+                        text: `✅ Captured selector ${args.selector} from ${args.url}`,
+                    },
+                ],
+            };
         } else if (request.params.name === 'take_screencast') {
             // Lazy load the module on first use (may already be loaded from warmup)
             if (!screenshotModule) {
                 logger.debug('Loading screenshot module...');
-                screenshotModule = await import(
-                    './internal/screenshotCapture.js'
-                );
+                screenshotModule =
+                    await import('./internal/screenshotCapture.js');
                 logger.info('Screenshot module loaded successfully');
             }
 
@@ -678,9 +781,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             // Lazy load the module on first use
             if (!screenshotModule) {
                 logger.debug('Loading screenshot module...');
-                screenshotModule = await import(
-                    './internal/screenshotCapture.js'
-                );
+                screenshotModule =
+                    await import('./internal/screenshotCapture.js');
                 logger.info('Screenshot module loaded successfully');
             }
 
@@ -777,9 +879,8 @@ async function runServer() {
             try {
                 if (!screenshotModule) {
                     logger.debug('Loading screenshot module for warmup...');
-                    screenshotModule = await import(
-                        './internal/screenshotCapture.js'
-                    );
+                    screenshotModule =
+                        await import('./internal/screenshotCapture.js');
                 }
                 await screenshotModule.warmupBrowser();
             } catch (error) {
@@ -790,7 +891,7 @@ async function runServer() {
         logger.info('Ready to receive requests');
         logger.debug('Server details:', {
             name: 'screenshot-website-fast',
-            version: '0.1.0',
+            version: '0.1.25',
             pid: process.pid,
         });
 

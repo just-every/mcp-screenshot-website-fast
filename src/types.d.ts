@@ -9,6 +9,11 @@ export interface ScreenshotOptions {
     waitFor?: number;
 }
 
+export interface SelectorScreenshotOptions extends ScreenshotOptions {
+    selector: string;
+    selectorTimeoutMS?: number;
+}
+
 export interface ScreencastOptions {
     url: string;
     duration: number; // Duration in seconds

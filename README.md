@@ -27,6 +27,7 @@ Built specifically for AI vision workflows, this tool captures high-quality scre
 - 💉 **JavaScript injection** - Execute custom JS before screencast capture
 - 📦 **Minimal dependencies** for fast npm installs
 - 🔌 **MCP integration** for seamless AI workflows
+- 🪟 **Windows-compatible launcher** for npm-installed MCP usage
 - 🔋 **Resource efficient** - Automatic browser cleanup after 60 seconds of inactivity
 - 🧹 **Memory management** - Pages are closed after each screenshot to prevent leaks
 
@@ -99,6 +100,16 @@ Once installed in your IDE, the following tools are available:
     - `waitFor` (optional): Additional wait time in milliseconds
     - `directory` (optional): Directory to save screenshots - returns file paths instead of base64 images
 
+- `capture_selector` - Captures a screenshot of a specific DOM element matched by a CSS selector
+  - Parameters:
+    - `url` (required): The HTTP/HTTPS URL to capture
+    - `selector` (required): CSS selector for the element to capture
+    - `width` (optional): Viewport width in pixels (max 1072, default: 1072)
+    - `height` (optional): Viewport height in pixels (max 1072, default: 1072)
+    - `waitUntil` (optional): Wait until event: load, domcontentloaded, networkidle0, networkidle2 (default: domcontentloaded)
+    - `waitForMS` (optional): Additional wait time in milliseconds
+    - `selectorTimeoutMS` (optional): How long to wait for the selector to appear before failing (default: 5000)
+
 #### Usage Examples
 
 **Default usage (returns base64 images):**
@@ -109,6 +120,11 @@ take_screenshot(url="https://example.com")
 **Save to directory (returns file paths):**
 ```
 take_screenshot(url="https://example.com", directory="/path/to/screenshots")
+```
+
+**Capture a specific element:**
+```
+capture_selector(url="https://example.com", selector="#main")
 ```
 
 When using the `directory` parameter:

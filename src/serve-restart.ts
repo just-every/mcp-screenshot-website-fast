@@ -23,7 +23,7 @@ const log = (level: string, message: string, ...args: any[]) => {
     if (!logLevel || logLevel === 'OFF') {
         return;
     }
-    
+
     const timestamp = new Date().toISOString();
     console.error(
         `[${timestamp}] [${level}] [restart-wrapper]`,
