@@ -10,6 +10,7 @@ import {
     ConsoleCaptureResult,
     ConsoleMessage,
 } from '../types.js';
+import { assertSafeCaptureUrl } from './urlSecurity.js';
 import { logger } from '../utils/logger.js';
 
 logger.debug('Screenshot module loaded');
@@ -255,13 +256,23 @@ async function setupPage(browser: Browser): Promise<Page> {
 
     // Block unnecessary resources that might cause navigation issues
     await page.setRequestInterception(true);
-    page.on('request', request => {
+    page.on('request', async request => {
         const resourceType = request.resourceType();
-        // Allow navigation and essential resources, block potential problematic ones
-        if (['font', 'media'].includes(resourceType)) {
-            request.abort();
-        } else {
-            request.continue();
+
+        try {
+            await assertSafeCaptureUrl(request.url());
+
+            // Allow navigation and essential resources, block potential problematic ones
+            if (['font', 'media'].includes(resourceType)) {
+                await request.abort();
+            } else {
+                await request.continue();
+            }
+        } catch (error) {
+            logger.warn(
+                `Blocked unsafe browser request to ${request.url()}: ${getErrorMessage(error)}`
+            );
+            await request.abort();
         }
     });
 
@@ -297,6 +308,8 @@ async function navigateWithRetry(
     options: ScreenshotOptions,
     browserRestartCallback?: () => Promise<Page>
 ): Promise<Page> {
+    await assertSafeCaptureUrl(url);
+
     const maxRetries = 3;
     let lastError;
     let currentPage = page;
@@ -407,6 +420,7 @@ export async function captureScreenshot(
 
     // Update activity time when screenshot is requested
     updateActivityTime();
+    await assertSafeCaptureUrl(options.url);
 
     // Always capture full page with tiling
     if (options.fullPage !== false) {
@@ -521,6 +535,7 @@ export async function captureSelectorScreenshot(
     });
 
     updateActivityTime();
+    await assertSafeCaptureUrl(options.url);
 
     let browser: Browser | null = null;
     let page: Page | null = null;
@@ -695,6 +710,8 @@ process.on('unhandledRejection', async error => {
 async function captureTiledScreenshot(
     options: ScreenshotOptions
 ): Promise<TiledScreenshotResult> {
+    await assertSafeCaptureUrl(options.url);
+
     const tileSize = options.viewport?.width || 1072;
 
     logger.info(`Taking tiled screenshot of ${options.url}`);
@@ -881,6 +898,7 @@ export async function captureScreencast(
 
     // Update activity time when screencast is requested
     updateActivityTime();
+    await assertSafeCaptureUrl(options.url);
 
     const frames: ScreencastResult['frames'] = [];
     const startTime = new Date();
@@ -1086,6 +1104,7 @@ export async function captureConsole(
 
     // Update activity time when console capture is requested
     updateActivityTime();
+    await assertSafeCaptureUrl(options.url);
 
     const messages: ConsoleMessage[] = [];
     const startTime = new Date();
