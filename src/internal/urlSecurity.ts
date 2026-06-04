@@ -3,7 +3,6 @@ import { isIP } from 'net';
 
 const SAFE_PROTOCOLS = new Set(['http:', 'https:']);
 const BLOCKED_HOSTNAMES = new Set(['localhost', 'localhost.localdomain']);
-const dnsCache = new Map<string, Promise<string[]>>();
 
 function normalizeHostname(hostname: string): string {
     return hostname.replace(/^\[|\]$/g, '').toLowerCase();
@@ -117,17 +116,12 @@ function isBlockedHostname(hostname: string): boolean {
 }
 
 async function resolveHostname(hostname: string): Promise<string[]> {
-    let addressesPromise = dnsCache.get(hostname);
+    const records = await lookup(hostname, {
+        all: true,
+        verbatim: false,
+    });
 
-    if (!addressesPromise) {
-        addressesPromise = lookup(hostname, {
-            all: true,
-            verbatim: false,
-        }).then(records => records.map(record => record.address));
-        dnsCache.set(hostname, addressesPromise);
-    }
-
-    return addressesPromise;
+    return records.map(record => record.address);
 }
 
 export async function assertSafeCaptureUrl(url: string): Promise<void> {
