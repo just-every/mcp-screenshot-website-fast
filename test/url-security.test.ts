@@ -22,22 +22,30 @@ describe('capture URL security', () => {
     });
 
     it.each([
-        'http://localhost',
-        'http://127.0.0.1',
         'http://0.0.0.0',
         'http://10.0.0.1',
         'http://172.16.0.1',
         'http://192.168.1.10',
         'http://169.254.169.254',
-        'http://[::1]',
-        'http://[::ffff:127.0.0.1]',
-        'http://[::ffff:7f00:1]',
         'http://[fc00::1]',
         'http://[fe80::1]',
     ])('rejects private or local destination %s', async url => {
         await expect(assertSafeCaptureUrl(url)).rejects.toThrow(
             /Blocked unsafe capture URL/
         );
+    });
+
+    it.each([
+        'http://localhost',
+        'http://localhost.localdomain',
+        'http://app.localhost',
+        'http://127.0.0.1',
+        'http://127.42.0.1',
+        'http://[::1]',
+        'http://[::ffff:127.0.0.1]',
+        'http://[::ffff:7f00:1]',
+    ])('allows loopback destination %s', async url => {
+        await expect(assertSafeCaptureUrl(url)).resolves.toBe(undefined);
     });
 
     it('allows public http and https URLs', async () => {
@@ -54,7 +62,7 @@ describe('capture URL security', () => {
             captureConsole({ url: 'file:///etc/passwd' })
         ).rejects.toThrow(/Blocked unsafe capture URL/);
         await expect(
-            captureScreenshot({ url: 'http://127.0.0.1' })
+            captureScreenshot({ url: 'http://192.168.1.10' })
         ).rejects.toThrow(/Blocked unsafe capture URL/);
         await expect(
             captureSelectorScreenshot({

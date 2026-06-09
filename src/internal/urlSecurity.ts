@@ -2,7 +2,7 @@ import { lookup } from 'dns/promises';
 import { isIP } from 'net';
 
 const SAFE_PROTOCOLS = new Set(['http:', 'https:']);
-const BLOCKED_HOSTNAMES = new Set(['localhost', 'localhost.localdomain']);
+const LOCALHOST_HOSTNAMES = new Set(['localhost', 'localhost.localdomain']);
 
 function normalizeHostname(hostname: string): string {
     return hostname.replace(/^\[|\]$/g, '').toLowerCase();
@@ -53,7 +53,12 @@ function isBlockedIpv4(address: string): boolean {
     );
 }
 
-function isBlockedIpv6(address: string): boolean {
+function isLoopbackIpv4(address: string): boolean {
+    const bytes = parseIpv4(address);
+    return bytes !== null && bytes[0] === 127;
+}
+
+function getMappedIpv4FromIpv6(address: string): string | null {
     const normalized = address.toLowerCase();
     const mappedIpv4 = normalized.match(/(?:::ffff:)(\d+\.\d+\.\d+\.\d+)$/);
     const mappedHexIpv4 = normalized.match(
@@ -61,19 +66,28 @@ function isBlockedIpv6(address: string): boolean {
     );
 
     if (mappedIpv4) {
-        return isBlockedIpv4(mappedIpv4[1]);
+        return mappedIpv4[1];
     }
 
     if (mappedHexIpv4) {
         const high = parseInt(mappedHexIpv4[1], 16);
         const low = parseInt(mappedHexIpv4[2], 16);
-        const mappedAddress = [
+        return [
             (high >> 8) & 255,
             high & 255,
             (low >> 8) & 255,
             low & 255,
         ].join('.');
+    }
 
+    return null;
+}
+
+function isBlockedIpv6(address: string): boolean {
+    const normalized = address.toLowerCase();
+    const mappedAddress = getMappedIpv4FromIpv6(normalized);
+
+    if (mappedAddress) {
         return isBlockedIpv4(mappedAddress);
     }
 
@@ -106,13 +120,35 @@ function isBlockedIpAddress(address: string): boolean {
     return true;
 }
 
+function isLocalhostHostname(hostname: string): boolean {
+    return LOCALHOST_HOSTNAMES.has(hostname) || hostname.endsWith('.localhost');
+}
+
 function isBlockedHostname(hostname: string): boolean {
+    return hostname.endsWith('.local') || hostname.endsWith('.internal');
+}
+
+function isLoopbackIpv6(address: string): boolean {
+    const normalized = address.toLowerCase();
+    const mappedAddress = getMappedIpv4FromIpv6(normalized);
     return (
-        BLOCKED_HOSTNAMES.has(hostname) ||
-        hostname.endsWith('.localhost') ||
-        hostname.endsWith('.local') ||
-        hostname.endsWith('.internal')
+        normalized === '::1' ||
+        (mappedAddress !== null && isLoopbackIpv4(mappedAddress))
     );
+}
+
+function isAllowedLocalAddress(address: string): boolean {
+    const ipVersion = isIP(address);
+
+    if (ipVersion === 4) {
+        return isLoopbackIpv4(address);
+    }
+
+    if (ipVersion === 6) {
+        return isLoopbackIpv6(address);
+    }
+
+    return false;
 }
 
 async function resolveHostname(hostname: string): Promise<string[]> {
@@ -142,13 +178,27 @@ export async function assertSafeCaptureUrl(url: string): Promise<void> {
     }
 
     const hostname = normalizeHostname(parsedUrl.hostname);
-    if (!hostname || isBlockedHostname(hostname)) {
+    if (!hostname) {
+        throw new Error(
+            `Blocked unsafe capture URL: ${parsedUrl.hostname} is not an allowed host`
+        );
+    }
+
+    if (isLocalhostHostname(hostname)) {
+        return;
+    }
+
+    if (isBlockedHostname(hostname)) {
         throw new Error(
             `Blocked unsafe capture URL: ${parsedUrl.hostname} is not an allowed host`
         );
     }
 
     if (isIP(hostname)) {
+        if (isAllowedLocalAddress(hostname)) {
+            return;
+        }
+
         if (isBlockedIpAddress(hostname)) {
             throw new Error(
                 `Blocked unsafe capture URL: ${hostname} is not an allowed destination`
