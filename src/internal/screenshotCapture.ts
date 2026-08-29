@@ -28,6 +28,10 @@ function getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
+function isBrowserConnected(currentBrowser: Browser | null): boolean {
+    return currentBrowser?.connected ?? false;
+}
+
 // Browser lifecycle management
 function updateActivityTime() {
     lastActivityTime = Date.now();
@@ -42,7 +46,7 @@ function resetInactivityTimer() {
     }
 
     // Don't set a new timer if browser is not running
-    if (!browser || !browser.isConnected()) {
+    if (!isBrowserConnected(browser)) {
         return;
     }
 
@@ -106,7 +110,7 @@ async function launchBrowser(): Promise<Browser> {
     newBrowser.on('disconnected', () => {
         logger.warn('Browser disconnected event received');
         logger.debug('Browser instance:', {
-            isConnected: newBrowser.isConnected(),
+            isConnected: isBrowserConnected(newBrowser),
         });
         if (browser === newBrowser) {
             browser = null;
@@ -135,7 +139,7 @@ async function getBrowser(forceRestart: boolean = false): Promise<Browser> {
     }
 
     // Check if we have a connected browser
-    if (browser && browser.isConnected()) {
+    if (browser && isBrowserConnected(browser)) {
         return browser;
     }
 
@@ -143,7 +147,7 @@ async function getBrowser(forceRestart: boolean = false): Promise<Browser> {
     if (browserLaunchPromise) {
         try {
             browser = await browserLaunchPromise;
-            if (browser && browser.isConnected()) {
+            if (browser && isBrowserConnected(browser)) {
                 return browser;
             }
         } catch (error) {
@@ -183,7 +187,7 @@ export async function closeBrowser(): Promise<void> {
         inactivityTimer = null;
     }
 
-    if (browser && browser.isConnected()) {
+    if (browser && isBrowserConnected(browser)) {
         logger.info('Closing browser...');
         try {
             await browser.close();
@@ -205,11 +209,11 @@ function startHealthCheck() {
     if (healthCheckInterval) return;
 
     healthCheckInterval = setInterval(async () => {
-        if (browser && !browser.isConnected()) {
+        if (browser && !isBrowserConnected(browser)) {
             logger.warn('Browser health check failed - browser disconnected');
             browser = null;
             browserLaunchPromise = null;
-        } else if (browser && browser.isConnected()) {
+        } else if (browser && isBrowserConnected(browser)) {
             try {
                 // Check memory usage
                 const pages = await browser.pages();
@@ -477,11 +481,13 @@ export async function captureScreenshot(
             }
 
             // Take screenshot
-            const screenshot = (await page.screenshot({
-                type: 'png',
-                fullPage: false,
-                encoding: 'binary',
-            })) as Buffer;
+            const screenshot = Buffer.from(
+                await page.screenshot({
+                    type: 'png',
+                    fullPage: false,
+                    encoding: 'binary',
+                })
+            );
 
             const result: ScreenshotResult = {
                 url: options.url,
@@ -595,10 +601,12 @@ export async function captureSelectorScreenshot(
                 );
             }
 
-            const screenshot = (await elementHandle.screenshot({
-                type: 'png',
-                encoding: 'binary',
-            })) as Buffer;
+            const screenshot = Buffer.from(
+                await elementHandle.screenshot({
+                    type: 'png',
+                    encoding: 'binary',
+                })
+            );
 
             const result: ScreenshotResult = {
                 url: options.url,
@@ -639,7 +647,7 @@ export async function captureSelectorScreenshot(
 export function getBrowserStats() {
     return {
         hasBrowser: !!browser,
-        isConnected: browser?.isConnected() || false,
+        isConnected: isBrowserConnected(browser),
         lastActivityTime: new Date(lastActivityTime).toISOString(),
         timeSinceLastActivity: Date.now() - lastActivityTime,
         hasInactivityTimer: !!inactivityTimer,
@@ -818,16 +826,18 @@ async function captureTiledScreenshot(
                     );
 
                     // Capture this specific tile directly from the page
-                    const tileBuffer = (await page.screenshot({
-                        type: 'png',
-                        encoding: 'binary',
-                        clip: {
-                            x,
-                            y,
-                            width,
-                            height,
-                        },
-                    })) as Buffer;
+                    const tileBuffer = Buffer.from(
+                        await page.screenshot({
+                            type: 'png',
+                            encoding: 'binary',
+                            clip: {
+                                x,
+                                y,
+                                width,
+                                height,
+                            },
+                        })
+                    );
 
                     tiles.push({
                         screenshot: tileBuffer,
@@ -985,11 +995,13 @@ export async function captureScreencast(
                 }
 
                 // Take screenshot
-                const screenshot = (await page.screenshot({
-                    type: 'png',
-                    fullPage: false,
-                    encoding: 'binary',
-                })) as Buffer;
+                const screenshot = Buffer.from(
+                    await page.screenshot({
+                        type: 'png',
+                        fullPage: false,
+                        encoding: 'binary',
+                    })
+                );
 
                 frames.push({
                     screenshot,
@@ -1032,11 +1044,13 @@ export async function captureScreencast(
             const frameStart = Date.now();
 
             // Take screenshot of viewport (top tile only)
-            const screenshot = (await page.screenshot({
-                type: 'png',
-                fullPage: false,
-                encoding: 'binary',
-            })) as Buffer;
+            const screenshot = Buffer.from(
+                await page.screenshot({
+                    type: 'png',
+                    fullPage: false,
+                    encoding: 'binary',
+                })
+            );
 
             const frameIndex = jsInstructionCount + i;
             frames.push({
