@@ -67,7 +67,7 @@ describe('Issue regressions', () => {
                 name: 'capture_selector',
                 arguments: {
                     url: selectorFixtureUrl,
-                    selector: 'h1',
+                    selector: 'body',
                     width: 500,
                     height: 300,
                     waitUntil: 'domcontentloaded',
